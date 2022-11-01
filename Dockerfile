@@ -29,16 +29,46 @@ RUN mkdir /cache \
  && mkdir /annotate \
  && mkdir /git \
  && mkdir /build \
- && chown $NB_USER /cache /save /annotate /git \
- && chmod 755 /cache /save /annotate /git
+ && mkdir /config \
+ && mkdir /data \
+ && mkdir -p /data/freesurfer/subjects \
+ && mkdir -p /data/required_subjects \
+ && mkdir -p /data/hcp/subjects \
+ && mkdir -p /data/hcp/lines \
+ && mkdir -p /data/hcp/meta \
+ && chown -R $NB_USER /cache /save /annotate /git /config /data \
+ && chmod -R 755 /cache /save /annotate /git /config /data
 # Make sure we have a place to put the annotate library where it will be found.
 RUN LPP="`python -c 'import site; print(site.getusersitepackages())'`" \
  && mkdir -p "$LPP" \
  && cd "$LPP" \
  && ln -s /annotate ./annotate
-# Fix the ownership of the ipython directory.
+# Fix the ownership of the .ipython and .local directory if needed.
+RUN [ -d /home/$NB_USER/.ipython/jupyter ] \
+ || mkdir -p /home/$NB_USER/.ipython/jupyter
+RUN [ -d /home/$NB_USER/.ipython/profile_default ] \
+ || mkdir -p /home/$NB_USER/.ipython/profile_default
 RUN chown -R $NB_USER /home/$NB_USER/.ipython \
  && chmod 700 /home/$NB_USER/.ipython
+RUN [ -d /home/$NB_USER/.local ] \
+ || mkdir /home/$NB_USER/.local
+RUN chown -R $NB_USER /home/$NB_USER/.local 
+
+# Next, we want to make sure that we have an fsaverage and an fsaverage_sym
+# subject for neuropythy to use if needed.
+# Download the required FreeSurfer subjects.
+RUN apt-get update \
+ && apt-get install --yes --no-install-recommends curl
+RUN curl -L -o /data/required_subjects/fsaverage.tar.gz \
+      https://github.com/noahbenson/neuropythy/wiki/files/fsaverage.tar.gz \
+ && cd /data/required_subjects \
+ && tar zxf fsaverage.tar.gz \
+ && rm fsaverage.tar.gz
+RUN curl -L -o /data/required_subjects/fsaverage_sym.tar.gz \
+      https://github.com/noahbenson/neuropythy/wiki/files/fsaverage_sym.tar.gz \
+ && cd /data/required_subjects \
+ && tar zxf fsaverage_sym.tar.gz \
+ && rm ./fsaverage_sym.tar.gz
 
 
 # The User Operations ##########################################################
@@ -68,6 +98,7 @@ COPY docker/custom.css                 /home/$NB_USER/.jupyter/custom/
 COPY docker/custom.js                  /home/$NB_USER/.jupyter/custom/
 COPY docker/ipython_kernel_config.py   /home/$NB_USER/.ipython/profile_default/
 COPY docker/ipython-startup.py         /home/$NB_USER/.ipython/profile_default/startup/
+COPY docker/npythy.json                /home/$NB_USER/.npythy.json
 COPY notebooks/annotate.ipynb          /home/$NB_USER/open_me.ipynb
 
 
@@ -87,6 +118,15 @@ USER $NB_USER
 RUN /bin/bash /build/build_user.sh
 
 
+# Cleanup ######################################################################
+
+# We need to fix the permissions for anything created in the meantime.
+USER root
+RUN fix-permissions $CONDA_DIR \
+ && fix-permissions /home/$NB_USER
+
+
 # Entrypoint ###################################################################
 
+USER $NB_USER
 ENTRYPOINT ["tini", "-g", "--", "/usr/local/bin/start-notebook.sh"]

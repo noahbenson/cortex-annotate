@@ -1,13 +1,14 @@
 version: '3'
 services:
    annotate:
-      build: .
+      build: ./docker/build
       ports:
-         - "8888:8888"
+         - "8888:${ANNOTATE_PORT}"
       volumes:
          - ${PWD}/annotate:/annotate
          - ${PWD}/save:/save
          - ${PWD}/cache:/cache
+         - ${PWD}/config:/config
          - ${PWD}/.git:/git
       environment:
         - DOCKER_STACKS_JUPYTER_CMD=notebook
