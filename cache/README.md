@@ -9,4 +9,3 @@ drawing tool, it might have to redownload or regenerate whatever you
 deleted. The primary purpose of using this directory is to speed up the display
 of images when you return to the tool and look at or edit your previous
 annotations.
-
