@@ -88,9 +88,11 @@ RUN jupyter contrib nbextension install --user \
  && jupyter nbextension enable collapsible_headings/main \
  && jupyter nbextension enable select_keymap/main
 RUN mkdir -p /home/$NB_USER/.jupyter/custom
-# Remove the work directory (we don't need it).
-RUN rmdir /home/$NB_USER/work
 
+
+# Copy User Files ##############################################################
+
+user $NB_USER
 # Now, do things that depend on the local files. COPY statements should go in
 # this section rather than earlier when possible.
 COPY docker/jupyter_notebook_config.py /home/$NB_USER/.jupyter/
@@ -99,7 +101,11 @@ COPY docker/custom.js                  /home/$NB_USER/.jupyter/custom/
 COPY docker/ipython_kernel_config.py   /home/$NB_USER/.ipython/profile_default/
 COPY docker/ipython-startup.py         /home/$NB_USER/.ipython/profile_default/startup/
 COPY docker/npythy.json                /home/$NB_USER/.npythy.json
-COPY notebooks/annotate.ipynb          /home/$NB_USER/open_me.ipynb
+COPY notebooks/annotate.ipynb          /home/$NB_USER/work/open_me.ipynb
+# We want to trust the notebook (this also fixed id-less cells).
+RUN jupyter trust /home/$NB_USER/work/open_me.ipynb
+# Finaly, copy over the annotate library.
+COPY annotate/ /annotate/
 
 
 # Custom Build Scripts #########################################################
@@ -118,12 +124,11 @@ USER $NB_USER
 RUN /bin/bash /build/build_user.sh
 
 
-# Cleanup ######################################################################
+# Permission Cleanup ###########################################################
 
 # We need to fix the permissions for anything created in the meantime.
 USER root
-RUN fix-permissions $CONDA_DIR \
- && fix-permissions /home/$NB_USER
+RUN fix-permissions /home/$NB_USER/.ipython
 
 
 # Entrypoint ###################################################################
