@@ -1,6 +1,3 @@
-# Import the DrawingTool for use in the notebook.
-from annotate import DrawingTool
-
 # This is a hack to pull the github username out of the git directory and put it
 # where DrawingTool can find it.
 import os
