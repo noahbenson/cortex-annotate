@@ -1,0 +1,9 @@
+{"freesurfer_subject_paths":       ["/data/required_subjects",
+                                    "/config/freesurfer/subjects"],
+ "data_cache_root":                "/cache/neuropythy",
+ "hcp_subject_paths":              "/cache/hcp/subjects",
+ "hcp_auto_download":              true,
+ "hcp_auto_path":                  "/cache/hcp/subjects",
+ "hcp_credentials":                "/config/credentials",
+ "hcp_lines_path":                 "/cache/hcp/lines",
+ "hcp_metadata_path":              "/cache/hcp/meta"}
