@@ -140,6 +140,7 @@
 
 ## The default URL to redirect to from `/`
 #c.NotebookApp.default_url = '/tree'
+c.NotebookApp.default_url = '/notebooks/open_me.ipynb'
 
 ## Disable cross-site-request-forgery protection
 #  
