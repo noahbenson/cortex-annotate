@@ -1,0 +1,13 @@
+version: '3'
+services:
+   annotate:
+      build: .
+      ports:
+         - "8888:8888"
+      volumes:
+         - ${PWD}/annotate:/annotate
+         - ${PWD}/save:/save
+         - ${PWD}/cache:/cache
+         - ${PWD}/.git:/git
+      environment:
+        - DOCKER_STACKS_JUPYTER_CMD=notebook

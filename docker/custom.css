@@ -1,0 +1,13 @@
+.container { width:100% !important; }
+
+div#site{
+    height: 100% !important;
+}
+div#notebook{
+  padding: 0;
+}
+
+$([IPython.events]).on('notebook_loaded.Notebook', function(){
+   $('#header').hide();
+   $('#maintoolbar').hide();
+});

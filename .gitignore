@@ -131,3 +131,7 @@ dmypy.json
 # Mac OS weird files
 .DS_Store
 ._*
+
+# We want to exclude everything in the cache directory except for the README file.
+/cache/*
+!/cache/README.md
