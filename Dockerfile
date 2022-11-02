@@ -82,6 +82,9 @@ RUN jupyter contrib nbextension install --user \
  && jupyter nbextension enable collapsible_headings/main \
  && jupyter nbextension enable select_keymap/main
 RUN mkdir -p /home/$NB_USER/.jupyter/custom
+# Copy the config directory's requirements over and install them.
+COPY config/requirements.txt /build/
+RUN pip install -r /build/requirements.txt
 
 
 # Copy User Files ##############################################################
@@ -93,8 +96,8 @@ COPY docker/jupyter_notebook_config.py /home/$NB_USER/.jupyter/
 COPY docker/custom.css                 /home/$NB_USER/.jupyter/custom/
 COPY docker/custom.js                  /home/$NB_USER/.jupyter/custom/
 COPY docker/ipython_kernel_config.py   /home/$NB_USER/.ipython/profile_default/
-COPY docker/ipython-startup.py         /home/$NB_USER/.ipython/profile_default/startup/
 COPY docker/npythy.json                /home/$NB_USER/.npythy.json
+COPY docker/ipython-startup.py         /home/$NB_USER/.ipython/profile_default/startup/
 COPY notebooks/annotate.ipynb          /home/$NB_USER/work/open_me.ipynb
 # We want to trust the notebook (this also fixed id-less cells).
 RUN jupyter trust /home/$NB_USER/work/open_me.ipynb
