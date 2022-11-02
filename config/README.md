@@ -243,8 +243,11 @@ Example:
 
 ```yaml
 figures:
-    # We don't need an init block, but we do want to make sure the images all
-    # have the xlim and ylim set correctly.
+    # We don't really need an init block, but to demonstrate it, we use it to
+    # set a local value for the maximum stimulus eccentricity. 
+    init: |
+        max_eccen = 10
+    # We want to make sure the images all have the xlim and ylim set correctly.
     term: |
         axes.set_xlim(target['xlim'])
         axes.set_ylim(target['ylim'])
@@ -258,8 +261,9 @@ figures:
         ny.cortex_plot(target['flatmap'], color=np.abs(prf_y), axes=axes,
                        cmap='hot', vmax=0, vmin=2)
     highlight_periphery: |
-        prf_y = target['flatmap'].prop('prf_y')
-        ny.cortex_plot(target['flatmap'], color=np.abs(prf_y), axes=axes,
+        prf_ecc = target['flatmap'].prop('prf_eccentricity')
+        highlight = np.abs(max_eccen - prf_ecc) # max_eccen was set in init.
+        ny.cortex_plot(target['flatmap'], color=highlight, axes=axes,
                        cmap='hot', vmax=0, vmin=2)
     # The curvature is very straightforward.
     curvature: |
