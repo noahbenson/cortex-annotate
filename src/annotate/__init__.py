@@ -16,5 +16,5 @@ on how to use these tools, see the README.md file in the github repository
 noahbenson/cortex-annotate.
 '''
 
-def DrawingTool():
+def AnnotationTool(*args, **kw):
     print("The drawing tool is not yet ready.")
