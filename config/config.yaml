@@ -1,0 +1,136 @@
+################################################################################
+# config/config.yaml
+#
+# This file is an example configuration file for the cortex-annotate project.
+# This is the main file that is used to determine how to produce images on which
+# annotations are to be drawn and to determine which annotations are being
+# drawn. See the README.md file for information on the format of this file.
+#
+# Note that this is not a working example of a config.yaml file, but it does
+# include most of the information that would be necessary for an annotation
+# project.
+
+# The config section tells us most of the global data that are needed for the
+# annotation tool, such as figure size.
+config:
+  # We want images to be 512 x 512 pixels.
+  figsize: [4, 4]
+  dpi: 128
+  # By default, we want annotations to appear dark bluish with fairly thin lines
+  # when not selected. We don't want unselected annotations to have points.
+  plot_options:
+    color: [0.25, 0.25, 0.65]
+    linewidth: 1
+    markersize: 0
+    linestyle: "-"
+  # We want selected annotations to be brighter and with markers/points plotted.
+  # We can keep the same linewidth and linestyle as in plot_options.
+  selected_plot_options:
+    color: [0.25, 0.25, 0.65]
+    markersize: 2
+# In the init section, we want to make sure numpy and neuropythy are imported,
+# and we want to make sure we have define a subject_path where we will load
+# subjects from.
+init: |
+    import neuropythy as ny, numpy as np
+    subject_path = "/cache/subjects"
+# We assume in this example that the libraries neuropythy and numpy have been
+# imported (as ny and np respectively) in the init section (see below).
+targets:
+    # The subject ID is selectable because there are 3 of them.
+    subject:
+        - sub001
+        - sub002
+        - sub003
+    # The nysubject item is a code snippet that loads a neuropythy Subject
+    # object, which we will need for generating images.
+    # This code block assumes that the `init` section defined the
+    # `subject_path` variable.
+    nysubject: |
+        subj = target['subject']
+        return ny.freesurfer_subject(f'{subject_path}/{subj}')
+    # The hemisphere is another selectable item because there are 2 of them.
+    hemisphere:
+        - LH
+        - RH
+    # Cortex, which has a string, is again a lazy value defined by a code
+    # snippet. This snippet extracts the Cortex object for the selected
+    # hemisphere.
+    cortex: |
+        h = target['hemisphere'].
+        return target['nysubject'].hemis[h]
+    # Additionally, we create a flatmap projection for the hemisphere. Here we
+    # make a projection of the occipital cortex.
+    flatmap: |
+        # Start by importing neuropythy.
+        # Make a flatmap projection of the occipital cortex.
+        return ny.to_flatmap('occipital_pole', target['cortex'])
+    # Finally, it's useful to have information about the image coordinates in
+    # the target data, so we add these.
+    xlim: |
+        x = target['flatmap'].coordinates[0]
+        return (np.min(x), np.max(x))
+    ylim: |
+        y = target['flatmap'].coordinates[1]
+        return (np.min(y), np.max(y))
+# When annotating V1-V3 using retinotopic maps; we need contours for the
+# periphery and for V1, V2, and V3 boundaries. When drawn like this, they are
+# all simple contours (not boundaries).
+annotations:
+    # The grids of images we want to show when annotating each contour 
+    # (see images section below).
+    contours:
+        periphery:
+            - ["polar_angle", "eccentricity"]
+            - ["curvature", "highlight_periphery"]
+        V1 boundary:
+            - ["polar_angle", "eccentricity"]
+            - ["curvature", "highlight_vm"]
+        V2 boundary:
+            - ["polar_angle", "eccentricity"]
+            - ["curvature", "highlight_hm"]
+        V3 boundary:
+            - ["polar_angle", "eccentricity"]
+            - ["curvature", "highlight_vm"]
+    # Additionally, sub001 has a lesion that we want to draw a boundary around.
+    boundaries:
+        lesion:
+            # We only want this boundary to appear for sub001, right hemisphere.
+            filter:
+                if   target['subject'] != 'sub001': return False
+                elif target['hemisphere'] != 'RH': return False
+                else: return True
+            # We want this boundary to appear dark red when not selected.
+            plot_options:
+                color: [0.6, 0, 0]
+            # And we want it to be thick and bright red when selected.
+            selected_plot_options:
+                color: [1, 0.2, 0.2]
+                linewidth: 2
+            grid: [["cod", "curvature"]]
+figures:
+    # We don't need an init block, but we do want to make sure the images all
+    # have the xlim and ylim set correctly.
+    term: |
+        axes.set_xlim(target['xlim'])
+        axes.set_ylim(target['ylim'])
+    # The highlight images need some specific code to plot correctly.
+    highlight_vm: |
+        prf_x = target['flatmap'].prop('prf_x')
+        ny.cortex_plot(target['flatmap'], color=np.abs(prf_x), axes=axes,
+                       cmap='hot', vmax=0, vmin=2)
+    highlight_hm: |
+        prf_y = target['flatmap'].prop('prf_y')
+        ny.cortex_plot(target['flatmap'], color=np.abs(prf_y), axes=axes,
+                       cmap='hot', vmax=0, vmin=2)
+    highlight_periphery: |
+        prf_y = target['flatmap'].prop('prf_y')
+        ny.cortex_plot(target['flatmap'], color=np.abs(prf_y), axes=axes,
+                       cmap='hot', vmax=0, vmin=2)
+    # The curvature is very straightforward.
+    curvature: |
+        ny.cortex_plot(target['flatmap'])
+    # The rest are PRF properties.
+    _: |
+        prop = 'prf_' + key
+        ny.cortex_plot(target['flatmap'], color=prop, axes=axes)
