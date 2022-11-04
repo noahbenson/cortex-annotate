@@ -76,7 +76,8 @@ USER $NB_USER
 RUN conda update -y -n base conda \
  && conda install -y nibabel s3fs \
  && conda install -y -cconda-forge ipywidgets pip jupyter_contrib_nbextensions \
- && pip install --upgrade setuptools
+ && pip install --upgrade setuptools \
+ && pip install ipycanvas pyyaml neuropythy
 # Install collapsible cell extensions...
 RUN jupyter contrib nbextension install --user \
  && jupyter nbextension enable collapsible_headings/main \
