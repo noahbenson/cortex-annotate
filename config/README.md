@@ -140,8 +140,7 @@ each target (i.e., the names of the annotations). Each of these annotations'
 sections must either be a list or a mapping as well. If the section is a list,
 then it is equivalent to a mapping whose only key is `grid` and whose other keys
 take the default value. Otherwise, a given annotation section must be a mapping
-whose keys may include `grid`, `filter`, `plot_options`, and
-`selected_plot_options`:
+whose keys may include `grid`, `filter`, `plot_options`, and `fg_options`:
 * **`grid`** is the grid of figures that is to be displayed while annotating. If
   a single list (as opposed to a matrix) is provided, then it is assumed to be a
   row. Elements of the `grid` must either be figure names or `null`.
@@ -152,15 +151,15 @@ whose keys may include `grid`, `filter`, `plot_options`, and
   is not the selected annotation. The keys in this section may be any viable
   optional argument for the `matplotlib.pyplot.plot` function. See also the
   root-scope `plot_options` section, below.
-* **`selected_plot_options`** is a mapping of display options, like
-  `plot_options` that specifies the display options for the annotation when it
-  is the selected annotation. Any key that does not appear here defaults to its
-  value in either the local-scope or the global-scope `plot_options` key, if
-  provided. In other words, if the global `plot_options` specifies a `linewidth`
-  of 2, the annotation's `options` specify a `markersize` of 3 and a color of
-  `[1,0,0]`, and the annotation's `selected_plot_options` specifies a color of
-  `[1, 0.5, 0.5]`, then the `selected_plot_options` is equivalent to having a
-  `linewidth` of 2, a `markersize` of 3, and a color of `[1, 0.5, 0.5]`.
+* **`fg_options`** is a mapping of display options, like `plot_options` that
+  specifies the display options for the annotation when it is the selected
+  annotation. Any key that does not appear here defaults to its value in either
+  the local-scope or the global-scope `plot_options` key, if provided. In other
+  words, if the global `plot_options` specifies a `linewidth` of 2, the
+  annotation's `options` specify a `markersize` of 3 and a color of `[1,0,0]`,
+  and the annotation's `fg_options` specifies a color of `[1, 0.5, 0.5]`, then
+  the `fg_options` is equivalent to having a `linewidth` of 2, a `markersize` of
+  3, and a color of `[1, 0.5, 0.5]`.
 
 Example:
 
@@ -188,7 +187,7 @@ annotations:
     boundaries:
         lesion:
             # We only want this boundary to appear for sub001, right hemisphere.
-            filter:
+            filter: |
                 if   target['subject'] != 'sub001': return False
                 elif target['hemisphere'] != 'RH': return False
                 else: return True
@@ -196,7 +195,7 @@ annotations:
             plot_options:
                 color: [0.6, 0, 0]
             # And we want it to be thick and bright red when selected.
-            selected_plot_options:
+            fg_options:
                 color: [1, 0.2, 0.2]
                 linewidth: 2
             grid: [["cod", "curvature"]]
@@ -275,27 +274,26 @@ figures:
 ```
 
 
-#### `config` (optional)
+#### `display` (optional)
 
-The `config` section contains simple configuration information about the images
+The `display` section contains simple configuration information about the images
 that are to be produced and the plotting style for annotations. The keys that
-may appear in this section are `plot_options` (see below),
-`selected_plot_options` (see below), `figsize` (default: `[8,8]`), which should
-be the size of the image in inches, and `dpi` (default: `128`), which should be
-the number of dots per inch. The size of the image in pixels is the `figsize`
-times the `dpi`.
+may appear in this section are `plot_options` (see below), `fg_options` (see
+below), `figsize` (default: `[8,8]`), which should be the size of the image in
+inches, and `dpi` (default: `128`), which should be the number of dots per
+inch. The size of the image in pixels is the `figsize` times the `dpi`.
 
-The `plot_options` and `selected_plot_options` keys must map to additional
-mappings that specify the options for the `matplotlib.pyplot.plot` function when
-drawing annotations that are either currently unselected (`plot_options`) or
-that are currently selected (`selected_plot_options`). See the `annotations`
-section for more information on the contents of these sections. The
-`selected_plot_options` inherits values from the `plot_options` mapping.
+The `plot_options` and `fg_options` keys must map to additional mappings that
+specify the options for the `matplotlib.pyplot.plot` function when drawing
+annotations that are either currently unselected (`plot_options`) or that are
+currently selected (`fg_options`). See the `annotations` section for more
+information on the contents of these sections. The `fg_options` inherits values
+from the `plot_options` mapping.
 
 Example:
 
 ```yaml
-config:
+display:
   # We want images to be 512 x 512 pixels.
   figsize: [4, 4]
   dpi: 128
@@ -308,7 +306,7 @@ config:
     linestyle: "-"
   # We want selected annotations to be brighter and with markers/points plotted.
   # We can keep the same linewidth and linestyle as in plot_options.
-  selected_plot_options:
+  fg_options:
     color: [0.5, 0.5, 1]
     markersize: 2
 ```
