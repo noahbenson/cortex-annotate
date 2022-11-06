@@ -18,6 +18,7 @@ noahbenson/cortex-annotate.
 
 # Imports ######################################################################
 
+from ._util import (delay, ldict)
 from ._core import AnnotationTool
 
 
