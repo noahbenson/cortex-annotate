@@ -132,6 +132,10 @@ dmypy.json
 .DS_Store
 ._*
 
-# We want to exclude everything in the cache directory except for the README file.
+# We want to exclude everything in the cache directory except for the README
+# file.
 /cache/*
 !/cache/README.md
+
+# We also want to exclude user preference files.
+.annot-prefs.yaml

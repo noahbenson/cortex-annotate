@@ -8,6 +8,7 @@
 # Dependencies #################################################################
 
 import numpy as np
+import yaml, os
 from collections import namedtuple
 from itertools import product
 
@@ -69,9 +70,10 @@ class DisplayConfig:
     __slots__ = ('figsize', 'dpi', 'imsize', 'plot_options', 'fg_options')
     def __init__(self, disp):
         from numbers import (Real, Integral)
+        from ._core import AnnotationState
         if disp is None: disp = {}
         figsize0 = figsize = disp.get('figsize', [4,4])
-        if not isinstance(figsize, list):
+        if not isinstance(figsize, (list,tuple)):
             figsize = [figsize, figsize]
         if not all(isinstance(u, Real) and u > 0 for u in figsize):
             raise ConfigError("display",
@@ -91,11 +93,30 @@ class DisplayConfig:
             raise ConfigError("display", 
                               "plot_options in display must be a mapping",
                               disp)
+        try: AnnotationState.fix_style(plot_opts)
+        except Exception: plot_opts = None
+        if plot_opts is None:
+            raise ConfigError("display.plot_options", "invalid plot_options",
+                              disp)
         fg_opts = disp.get('fg_options', {})
         if not isinstance(fg_opts, dict):
             raise ConfigError("display", 
                               "fg_options in display must be a mapping",
                               disp)
+        try: AnnotationState.fix_style(fg_opts)
+        except Exception: fg_opts = None
+        if fg_opts is None:
+            raise ConfigError("display.fg_options", "invalid fg_options",
+                              disp)
+        # Make sure the keys are valid
+        style_keys = AnnotationState.style_keys
+        for (opts, name) in zip([plot_opts, fg_opts], ["plot","fg"]):
+            bad = [k for k in opts.keys() if k not in style_keys]
+            if len(bad) > 0:
+                raise ConfigError(
+                    "display",
+                    f"invalid keys in display.{name}_options: {bad}",
+                    disp)
         # We need to merge the plot options and fg options together since the
         # plot options are the defaults for the fg options.
         fg_opts = dict(plot_opts, **fg_opts)
@@ -119,8 +140,16 @@ class TargetsConfig(ldict):
     __slots__ = ('items', 'concrete_keys')
     @staticmethod
     def _reify_target(items, concrete_keys, targ):
-        # We build up a lazydict of the whole target spec for this
-        # specific target selection.
+        """Builds up and returns an `ldict` of the all target data.
+
+        `TargetsConfig._reify_target(items, concrete_keys, targ)` takes the
+        target-id tuple `targ` and builds up the `ldict` representation of the
+        target data, in which all keys in the `config.yaml` file have values
+        (albeit lazy ones in the case of the keys that are not concrete). The
+        parameters `items` and `concrete_keys` must be the configuration's
+        target data and the list of concrete keys must be the concrete keys for
+        the target, respectively.
+        """
         d = ldict()
         targ_iter = iter(targ)
         for (k,v) in items.items():
@@ -166,7 +195,7 @@ class TargetsConfig(ldict):
         self.update(d)
 Annotation = namedtuple(
     'Annotation',
-    ('grid', 'filter', 'closed', 'plot_options', 'fg_options'))
+    ('grid', 'filter', 'type', 'plot_options'))
 class AnnotationsConfig(dict):
     """An object that stores the configuration of the annotations to be drawn.
 
@@ -175,6 +204,7 @@ class AnnotationsConfig(dict):
     """
     __slots__ = ('all_figures')
     def __init__(self, yaml, init):
+        from ._core import AnnotationState
         # The yaml should just contain entries for the annotations.
         if not isinstance(yaml, dict):
             raise ConfigError("annotations",
@@ -195,21 +225,23 @@ class AnnotationsConfig(dict):
             plot_opts = v.get('plot_options', {})
             if not isinstance(plot_opts, dict):
                 raise ConfigError(f"annotations.{k}", 
-                                  "plot_options in display must be a mapping",
+                                  "annotation plot_options must be mappings",
                                   yaml)
-            fg_opts = v.get('fg_options', {})
-            if not isinstance(fg_opts, dict):
-                raise ConfigError(f"annotations.{k}", 
-                                  "fg_options in display must be a mapping",
+            try: AnnotationState.fix_style(plot_opts)
+            except Exception: plot_opts = None
+            if plot_opts is None:
+                raise ConfigError(f"annotations.{k}", "invalid plot_options",
                                   yaml)
-            closed = v.get('closed', False)
-            if closed is not True and closed is not False:
-                raise ConfigError(f"annotations.{k}", "closed must be boolean",
-                                  yaml)
+            ctype = v.get('type', 'contour')
+            if ctype not in ('contour', 'boundary', 'point'):
+                raise ConfigError(
+                    f"annotations.{k}", 
+                    "type must be one of 'contour', 'boundary', or 'point'",
+                    yaml)
             filter = v.get('filter', None)
             if filter is not None and not isinstance(filter, str):
                 raise ConfigError(f"annotations.{k}",
-                                  "filter must be null or a string",
+                                  "filter must be null or a Python code string",
                                   yaml)
             grid = v.get('grid', None)
             if not isinstance(grid, list):
@@ -245,7 +277,7 @@ class AnnotationsConfig(dict):
                 filter = loc[fnname]
             # Everything for this annotation is now processed; just set up its
             # Annotation object.
-            annots[k] = Annotation(grid, filter, closed, plot_opts, fg_opts)
+            annots[k] = Annotation(grid, filter, ctype, plot_opts)
         # And now all the annotations are processed.
         self.update(annots)
         self.all_figures = figs
@@ -338,7 +370,7 @@ class Config:
     `Config.yaml` member variable.
     """
     __slots__ = ('config_path', 'yaml', 'display', 'init', 'targets',
-                 'annotations')
+                 'annotations', 'figures')
     def __init__(self, config_path='/config/config.yaml'):
         self.config_path = config_path
         with open(config_path, 'rt') as f:
@@ -352,3 +384,6 @@ class Config:
         # Parse the annotations section.
         self.annotations = AnnotationsConfig(self.yaml.get('annotations', None),
                                              self.init)
+        # Parse the figures section.
+        self.figures = FiguresConfig(self.yaml.get('figures', None), self.init,
+                                     self.annotations.all_figures)

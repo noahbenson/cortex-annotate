@@ -5,7 +5,7 @@ services:
       ports:
          - "8888:${ANNOTATE_PORT}"
       volumes:
-         - ${PWD}/annotate:/annotate
+         - ${PWD}/src:/src
          - ${PWD}/save:/save
          - ${PWD}/cache:/cache
          - ${PWD}/config:/config

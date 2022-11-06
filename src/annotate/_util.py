@@ -41,6 +41,10 @@ class delay:
     def __init__(self, f, *args, **kw):
         object.__setattr__(self, '_partial', partial(f, *args, **kw))
         object.__setattr__(self, '_result', None)
+    @property
+    def is_cached(self):
+        "Returns `True` if the delay object has been cached, otherwise `False`."
+        return (self._partial is None)
 def undelay(obj):
     """Returns the argument except for delays whose result values are returned.
     
@@ -112,3 +116,7 @@ class ldict(dict):
         other_items = other.items()
         self_items = ldict_items(self)
         return all(kv in other_items for kv in self_items)
+    def is_lazy(self, k):
+        """Returns `True` if the given key is an uncached lazy value."""
+        v = dict.__getitem__(self, k)
+        return (not v.is_cached) if type(v) is delay else False
