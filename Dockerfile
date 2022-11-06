@@ -99,9 +99,9 @@ COPY docker/custom.js                  /home/$NB_USER/.jupyter/custom/
 COPY docker/ipython_kernel_config.py   /home/$NB_USER/.ipython/profile_default/
 COPY docker/npythy.json                /home/$NB_USER/.npythy.json
 COPY docker/ipython-startup.py         /home/$NB_USER/.ipython/profile_default/startup/
-COPY notebooks/annotate.ipynb          /home/$NB_USER/work/open_me.ipynb
+COPY notebooks/annotate.ipynb          /home/$NB_USER/work/AnnotationTool.ipynb
 # We want to trust the notebook (this also fixed id-less cells).
-RUN jupyter trust /home/$NB_USER/work/open_me.ipynb
+RUN jupyter trust /home/$NB_USER/work/AnnotationTool.ipynb
 # Finaly, copy over the annotate library and any other code.
 COPY src/ /src/
 
