@@ -10,6 +10,7 @@
 # Imports ######################################################################
 
 from functools import partial
+from collections import defaultdict
 
 import numpy as np
 import matplotlib as mpl
@@ -30,18 +31,36 @@ class FigurePanel(ipw.HBox):
     to manage the display of images and annotations for the `AnnotationTool` in
     `_core.py`.
     """
+    class LoadingContext:
+        __slots__ = ('canvas',)
+        _count = defaultdict(lambda:0)
+        def __init__(self, canvas):
+            self.canvas = canvas
+        def __enter__(self):
+            c = FigurePanel.LoadingContext._count
+            idc = id(self.canvas)
+            count = c[idc]
+            if count == 0:
+                FigurePanel.draw_loading(self.canvas)
+            c[idc] = count + 1 
+        def __exit__(self, type, value, traceback):
+            c = FigurePanel.LoadingContext._count
+            idc = id(self.canvas)
+            count = c[idc]
+            count -= 1
+            c[idc] = count
+            if count == 0:
+                self.canvas.clear()
+                del c[idc]
     def __init__(self, state, imagesize=256):
         self.state = state
         self.imagesize = imagesize
         # Make a multicanvas for the image [0] and the drawings [1].
         imsz = imagesize
         # Make a multicanvas.
-        self.multicanvas = ipc.MultiCanvas(2, width=imsz, height=imsz)
+        self.multicanvas = ipc.MultiCanvas(3, width=imsz, height=imsz)
         html = ipw.HTML(f"""
             <style> canvas {{
-                border-color: #f0f0f0;
-                border-style: solid;
-                border-width: 1px;
                 cursor: crosshair !important;
             }} </style>
             <div class="cortex-annotate-StylePanel-hline"></div>
@@ -53,6 +72,11 @@ class FigurePanel(ipw.HBox):
         # Separate out the two canvases.
         self.image_canvas = self.multicanvas[0]
         self.draw_canvas = self.multicanvas[1]
+        self.loading_canvas = self.multicanvas[2]
+        # Draw the loading screen on the loading canvas and save it.
+        self.draw_loading(self.loading_canvas)
+        self.loading_canvas.save()
+        self.loading_context = FigurePanel.LoadingContext(self.loading_canvas)
         # We start out with nothing drawn initially.
         self.image = None
         self.grid_shape = (1,1)
@@ -65,6 +89,19 @@ class FigurePanel(ipw.HBox):
         # Temporary hack.
         with open("/cache/test512.png", "rb") as f:
             self.image = ipw.Image(value=f.read(), format="png")
+    @classmethod
+    def draw_loading(cls, dc):
+        """Clears the draw canvas and draws the loading screen."""
+        with ipc.hold_canvas():
+            dc.clear()
+            dc.fill_style = 'white'
+            dc.global_alpha = 0.85
+            dc.fill_rect(0, 0, dc.width, dc.height)
+            dc.global_alpha = 1
+            dc.font = "32px HelveticaNeue"
+            dc.fill_style = 'black'
+            dc.text_align = 'center'
+            dc.fill_text("Loading...", 120, 120)
     def resize_canvas(self, new_size):
         """Resizes the figure canvas so that images appear at the given size.
 
@@ -172,26 +209,30 @@ class FigurePanel(ipw.HBox):
         # Redraw the image (assuming one was given).
         w = self.multicanvas.width
         h = self.multicanvas.height
-        if redraw_image:
-            self.image_canvas.clear()
-            if image is not None:
-                self.image_canvas.draw_image(image, 0, 0, w, h)
-        if redraw_annotations:
-            self.draw_canvas.clear()
-            # We step through all (visible) annotations and draw them.
-            for (ann_name, points) in self.annotations.items():
-                # Skip the foreground for now.
-                if ann_name == self.foreground: continue
-                if len(points) == 0: continue
-                # If this annotation isn't visible, we can skip it also.
-                style = self.state.style(ann_name)
-                if not style['visible']: continue
-                # Okay, it needs to be drawn, so convert the figure points into
-                # image coordinates.
-                grid_points = self.figure_to_image(points)
-                # For all the point-matrices here, we need to draw them.
-                for pts in grid_points:
-                    self.state.draw_path(ann_name, pts, self.draw_canvas)
+        if redraw_image or redraw_annotations:
+            self.loading_canvas.restore()
+        with ipc.hold_canvas():
+            if redraw_image:
+                self.image_canvas.clear()
+                if image is not None:
+                    self.image_canvas.draw_image(image, 0, 0, w, h)
+            if redraw_annotations:
+                self.draw_canvas.clear()
+                # We step through all (visible) annotations and draw them.
+                for (ann_name, points) in self.annotations.items():
+                    # Skip the foreground for now.
+                    if ann_name == self.foreground: continue
+                    if len(points) == 0: continue
+                    # If this annotation isn't visible, we can skip it also.
+                    style = self.state.style(ann_name)
+                    if not style['visible']: continue
+                    # Okay, it needs to be drawn, so convert the figure points
+                    # into image coordinates.
+                    grid_points = self.figure_to_image(points)
+                    # For all the point-matrices here, we need to draw them.
+                    for pts in grid_points:
+                        self.state.draw_path(ann_name, pts, self.draw_canvas)
+            self.loading_canvas.clear()
         # That's all that's required for now.
     def change_foreground(self, annot):
         """Changes the foreground annotation (the annotation being edited).

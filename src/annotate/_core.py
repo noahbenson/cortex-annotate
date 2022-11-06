@@ -22,7 +22,7 @@ import matplotlib.pyplot as plt
 import matplotlib as mpl
 import ipywidgets as ipw
 import imageio.v3 as iio
-import yaml
+import yaml, json
 
 from ._util    import (ldict, delay)
 from ._config  import Config
@@ -32,6 +32,9 @@ from ._figure  import FigurePanel
 
 # The State Manager ############################################################
 
+class NoOpContext:
+    def __enter__(self): pass
+    def __exit__(self, type, value, traceback): pass
 class AnnotationState:
     """The manager of the state of the annotation and the annotation tool.
 
@@ -64,31 +67,31 @@ class AnnotationState:
         else:
             path = [target[k] for k in self.config.targets.concrete_keys]
         return os.path.join(*path)
-    def target_figure_path(self, target, figure=None):
+    def target_figure_path(self, target, figure=None, ensure=True):
         """Returns the cache path for a target's figures."""
-        if figure is None:
-            return os.path.join(self.cache_path, 'figures',
-                                self.target_path(target))
-        else:
-            return os.path.join(self.cache_path, 'figures',
-                                self.target_path(target),
-                                f"{figure}.png")
-    def target_grid_path(self, target, annotation=None):
+        path = self.target_path(target)
+        path = os.path.join(self.cache_path, 'figures', path)
+        if ensure and not os.path.isdir(path):
+            os.makedirs(path, mode=0o755)
+        if figure is not None:
+            path = os.path.join(path, f"{figure}.png")
+        return path
+    def target_grid_path(self, target, annotation=None, ensure=True):
         """Returns the cache path for a target's grids."""
-        if annotation is None:
-            return os.path.join(self.cache_path, 'grids',
-                                self.target_path(target))
-        else:
-            return os.path.join(self.cache_path, 'grids',
-                                self.target_path(target),
-                                f"{annotation}.png")
-    def target_save_path(self, target, annotation=None):
+        path = os.path.join(self.cache_path, 'grids', self.target_path(target))
+        if ensure and not os.path.isdir(path):
+            os.makedirs(path, mode=0o755)
+        if annotation is not None:
+            path = os.path.join(path, f"{annotation}.png")
+        return path
+    def target_save_path(self, target, annotation=None, ensure=True):
         """Returns the save path for a target's annotation data."""
         path = os.path.join(self.save_path, self.target_path(target))
-        if annotation is None:
-            return path
-        else:
-            return os.path.join(path, f"{annotation}.tsv")
+        if ensure and not os.path.isdir(path):
+            os.makedirs(path, mode=0o755)
+        if annotation is not None:
+            path = os.path.join(path, f"{annotation}.tsv")
+        return path
     def generate_figure(self, target_id, figure_name):
         """Generates a single figure for the given target and figure name."""
         target = self.config.targets[target_id]
@@ -105,11 +108,11 @@ class AnnotationState:
         path = self.target_figure_path(target, figure_name)
         plt.savefig(path, bbox_inches=None)
         # We also need a companion meta-data file.
-        json = json.dumps({'xlim': ax.get_xlim(), 'ylim': ax.get_ylim()})
+        jscode = json.dumps({'xlim': ax.get_xlim(), 'ylim': ax.get_ylim()})
         path = os.path.join(self.target_figure_path(target), 
                             f"{figure_name}.json")
         with open(path, "wt") as f:
-            f.write(json)
+            f.write(jscode)
         # We can close the figure now as well.
         plt.close(fig)
     def figure(self, target_id, figure_name):
@@ -127,7 +130,8 @@ class AnnotationState:
                               f"{figure_name}.json")
         # If the files aren't here already, we generate them first.
         if not os.path.isfile(impath) or not os.path.isfile(mdpath):
-            self.generate_figure(target_id, figure_name)
+            with self.loading_context:
+                self.generate_figure(target_id, figure_name)
         # Now read them both in.
         image_data = iio.imread(impath)
         with open(mdpath, "rt") as f:
@@ -145,12 +149,15 @@ class AnnotationState:
         figdata = [[self.figure(target_id, figname) for figname in row]
                    for row in anndata.grid]
         # Make sure the figure meta-data all match!
-        md0 = figdata[0][0]
-        for row in grid:
+        md0 = figdata[0][0][1]
+        for row in figdata:
             for (fig,md) in row:
-                if md0 != md:
-                    raise ConfigError(f"not all figures have the same "
-                                      f"meta-data for annotation {annotation}")
+                if md0['xlim'] != md['xlim']:
+                    raise RuntimeError(f"not all figures have the same xlim for"
+                                       f" annotation {annotation}")
+                if md0['ylim'] != md['ylim']:
+                    raise RuntimeError(f"not all figures have the same ylim for"
+                                       f" annotation {annotation}")
         grid = np.concatenate([np.concatenate([fig for (fig,md) in row],
                                               axis=1)
                                for row in figdata],
@@ -158,9 +165,9 @@ class AnnotationState:
         # Save it out as a png file.
         iio.imwrite(impath, grid)
         # And save out the meta-data.
-        json = json.dumps(md0)
+        jscode = json.dumps(md0)
         with open(mdpath, "wt") as f:
-            f.write(json)
+            f.write(jscode)
     def grid(self, target_id, annotation):
         """Returns the grid of figures for the given target and annotation.
 
@@ -176,7 +183,8 @@ class AnnotationState:
         grid_shape = np.shape(anndata.grid)
         # If the files aren't here already, we generate them first.
         if not os.path.isfile(impath) or not os.path.isfile(mdpath):
-            self.generate_grid(target_id, annotation)
+            with self.loading_context:
+                self.generate_grid(target_id, annotation)
         # Now read them both in.
         with open(impath, "rb") as f:
             image_data = f.read()
@@ -335,9 +343,15 @@ class AnnotationState:
             if len(coords.shape) != 2 or coords.shape[1] != 2:
                 raise RuntimeError(f"annotation {k} for target {tid} has"
                                    f" invalid shape {coords.shape}")
+            # If they're empty, no need to save them; delete the file if it
+            # exists instead.
+            path = self.target_save_path(tid, k)
+            if len(coords) == 0:
+                if os.path.isfile(path):
+                    os.remove(path)
+                continue
             # Save them using pandas.
             df = pd.DataFrame(coords)
-            path = self.target_save_path(tid, k)
             df.to_csv(path, index=False, header=None, sep="\t")
     def save_annotations(self):
         "Saves the annotations for a given target."
@@ -351,13 +365,14 @@ class AnnotationState:
         self.save_preferences()
         self.save_annotations()
     __slots__ = ("config", "cache_path", "save_path", "git_path", "username",
-                 "annotations", "preferences")
+                 "annotations", "preferences", "loading_context")
     def __init__(self,
                  config_path='/config/config.yaml',
                  cache_path='/cache',
                  save_path='/save',
                  git_path='/git',
-                 username=None):
+                 username=None,
+                 loading_context=None):
         self.config = Config(config_path)
         self.cache_path = cache_path
         self.git_path = git_path
@@ -371,6 +386,12 @@ class AnnotationState:
         self.username = username
         if username == '': self.save_path = save_path
         else:              self.save_path = os.path.join(save_path, username)
+        if not os.path.isdir(self.save_path):
+            os.makedirs(self.save_path, mode=0o755)
+        # Use our loading control if we have one.
+        if loading_context is None:
+            loading_context = NoOpContext()
+        self.loading_context = loading_context
         # (Lazily) load the annotations.
         self.annotations = self.load_annotations()
         # And (lazily) load the preferences.
@@ -451,6 +472,13 @@ class AnnotationTool(ipw.HBox):
         self.state.imagesize(change.new)
         # Resize the figure panel.
         self.figure_panel.resize_canvas(change.new)
+    def refresh_figure(self):
+        targ = self.control_panel.target
+        annot = self.control_panel.annotation
+        (imdata, grid_shape, meta) = self.state.grid(targ, annot)
+        im = ipw.Image(value=imdata, format='png')
+        self.figure_panel.annotations = self.state.annotations[targ]
+        self.figure_panel.redraw_canvas(image=im, grid_shape=grid_shape, **meta)
     def on_selection_change(self, key, change):
         "This method runs when the control panel's selection changes."
         if change.name != 'value': return
@@ -458,12 +486,7 @@ class AnnotationTool(ipw.HBox):
         self.state.save_annotations()
         # The selection has changed; we need to redraw the image and update the
         # annotations.
-        targ = self.control_panel.target
-        annot = self.control_panel.annotation
-        (imdata, grid_shape, meta) = self.state.grid(targ, annot)
-        im = ipw.Image(value=imdata, format='png')
-        self.figure_panel.annotations = self.state.annotations[targ]
-        self.figure_panel.redraw_canvas(image=im, grid_shape=grid_shape, **meta)
+        self.refresh_figure()
     def on_style_change(self, annotation, key, change):
         "This method runs when the control panel's style elements change."
         # Update the state.
@@ -476,11 +499,11 @@ class AnnotationTool(ipw.HBox):
         self.state.save_annotations()
         self.state.save_preferences()
     def __init__(self,
-                 username=None,
                  config_path='/config/config.yaml',
                  cache_path='/cache',
                  save_path='/save',
                  git_path='/git',
+                 username=None,
                  control_panel_background_color="#f0f0f0",
                  save_button_color="#e0e0e0"):
         self.cache_path = cache_path
@@ -501,6 +524,10 @@ class AnnotationTool(ipw.HBox):
         self.figure_panel = FigurePanel(
             self.state,
             imagesize=imagesize)
+        # Pass the loading context over to the state.
+        self.state.loading_context = self.figure_panel.loading_context
+        # Give the figure the initial image to plot.
+        self.refresh_figure()
         # Add a listener for the image size change.
         self.control_panel.observe_imagesize(self.on_imagesize_change)
         # And a listener for the selection change.

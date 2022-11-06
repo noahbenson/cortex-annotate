@@ -156,7 +156,7 @@ class TargetsConfig(ldict):
             if k in concrete_keys:
                 d[k] = next(targ_iter)
             else:
-                d[k] = delay(v, d.copy())
+                d[k] = delay(v, ldict(d))
         return d
     def __init__(self, yaml, init):
         from itertools import product
