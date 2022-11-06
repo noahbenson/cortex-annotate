@@ -310,7 +310,7 @@ class AnnotationState:
         if not os.path.isfile(path):
             # If there's no file, we return an empty matrix of points.
             return np.zeros((0,2), dtype=float)
-        df = pd.read_csv(path, sep="\t")
+        df = pd.read_csv(path, sep="\t", header=None)
         coords = df.values
         # The TSV file must contain an N x 2 matrix of values!
         if len(coords.shape) != 2 or coords.shape[1] != 2:
@@ -396,7 +396,7 @@ class AnnotationState:
         self.annotations = self.load_annotations()
         # And (lazily) load the preferences.
         self.preferences = self.load_preferences()
-    def apply_style(self, ann_name, canvas):
+    def apply_style(self, ann_name, canvas, style=None):
         """Applies the style associated with an annotation name to a canvas.
 
         `state.apply_style(name, canvas)` applies the annotation preferences
@@ -406,9 +406,13 @@ class AnnotationState:
 
         If the requested annotation style is not visible, this function still
         applies the style but returns `False`. Otherwise, it returns `True`.
+
+        If the optional argument `style` is given, then that style dictionary is
+        used in place of the style dictionary associated with `ann_name`.
         """
         # Get the appropriate style first.
-        style = self.style(ann_name)
+        if style is None:
+            style = self.style(ann_name)
         # And walk through the key/values applying them.
         lw = style['linewidth']
         ls = style['linestyle']
@@ -430,7 +434,8 @@ class AnnotationState:
         canvas.stroke_style = c
         canvas.fill_style = c
         return v
-    def draw_path(self, ann_name, points, canvas, path=True):
+    def draw_path(self, ann_name, points, canvas, path=True, style=None,
+                  fixed_head=False, fixed_tail=False, cursor=None):
         """Draws the given path on the given canvas using the named style.
 
         `state.draw_path(name, path, canvas)` applies the style for the named
@@ -440,10 +445,13 @@ class AnnotationState:
 
         If the optional argument `path` is `False`, then only the points are
         drawn.
+
+        If the optional argument `style` is given, then the given style dict
+        is used instead of the stling for the `ann_name` annotation.
         """
-        self.apply_style(ann_name, canvas)
+        self.apply_style(ann_name, canvas, style=None)
         # First, draw stroke the path.
-        if path:
+        if path and len(points) > 1:
             canvas.begin_path()
             (x,y) = points[0]
             canvas.move_to(x,y)
@@ -451,10 +459,44 @@ class AnnotationState:
                 canvas.line_to(x, y)
             canvas.stroke()
         # Next, draw the points.
-        ms = self.style(ann_name)['markersize']
+        sty = self.style(ann_name)
+        ms = sty['markersize']
+        if ms <= 0 and cursor is None: return
+        if fixed_head and len(points) > 0:
+            (x,y) = points[0]
+            canvas.fill_rect(x-ms, y-ms, ms*2, ms*2)
+            rest = points[1:]
+        else:
+            rest = points
+        if fixed_tail and len(rest) > 0:
+            (x,y) = points[-1]
+            canvas.fill_rect(x-ms, y-ms, ms*2, ms*2)
+            rest = points[:-1]
+        else:
+            rest = points
         if ms > 0:
-            for (x,y) in points:
+            for (x,y) in rest:
                 canvas.fill_circle(x, y, ms)
+        if cursor is not None:
+            ms = (ms + 1) * 4/3
+            canvas.set_line_dash([])
+            canvas.line_width = sty['linewidth'] * 3/4
+            if len(rest) == 1:
+                # We plot the circle if the cursor is head otherwise we
+                # don't plot the circle.
+                if cursor == 'head':
+                    (x,y) = rest[0]
+                else:
+                    ms = 0
+            elif len(rest) > 1:
+                if cursor == 'head':
+                    (x,y) = rest[0]
+                else:
+                    (x,y) = rest[-1]
+            else:
+                ms = 0
+            if ms > 0:
+                canvas.stroke_circle(x, y, ms)
         # That's all!
 
 
@@ -477,7 +519,11 @@ class AnnotationTool(ipw.HBox):
         annot = self.control_panel.annotation
         (imdata, grid_shape, meta) = self.state.grid(targ, annot)
         im = ipw.Image(value=imdata, format='png')
-        self.figure_panel.annotations = self.state.annotations[targ]
+        self.figure_panel.change_annotations(self.state.annotations[targ],
+                                             redraw=False)
+        self.figure_panel.change_foreground(self.control_panel.annotation,
+                                            redraw=False)
+        meta = {k:meta[k] for k in ('xlim','ylim') if k in meta}
         self.figure_panel.redraw_canvas(image=im, grid_shape=grid_shape, **meta)
     def on_selection_change(self, key, change):
         "This method runs when the control panel's selection changes."

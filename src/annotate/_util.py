@@ -105,6 +105,11 @@ class ldict(dict):
     def __getitem__(self, k):
         v = dict.__getitem__(self, k)
         return undelay(v)
+    def get(self, k, df=None):
+        if k in self:
+            return self[k]
+        else:
+            return df
     def items(self):
         return ldict_items(self)
     def values(self):

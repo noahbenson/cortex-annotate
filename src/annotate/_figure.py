@@ -77,6 +77,9 @@ class FigurePanel(ipw.HBox):
         self.draw_loading(self.loading_canvas)
         self.loading_canvas.save()
         self.loading_context = FigurePanel.LoadingContext(self.loading_canvas)
+        # Set up our event observers for clicks/tabs/backspaces.
+        self.multicanvas.on_key_down(self.on_key_press)
+        self.multicanvas.on_mouse_down(self.on_mouse_click)
         # We start out with nothing drawn initially.
         self.image = None
         self.grid_shape = (1,1)
@@ -84,11 +87,11 @@ class FigurePanel(ipw.HBox):
         self.xlim = None
         self.ylim = None
         self.annotations = {}
+        self.cursor_position = 'head'
+        self.fixed_heads = None
+        self.fixed_tails = None
         # Initialize our parent class.
         super().__init__([html, self.multicanvas])
-        # Temporary hack.
-        with open("/cache/test512.png", "rb") as f:
-            self.image = ipw.Image(value=f.read(), format="png")
     @classmethod
     def draw_loading(cls, dc):
         """Clears the draw canvas and draws the loading screen."""
@@ -189,9 +192,7 @@ class FigurePanel(ipw.HBox):
         # If no new image was passed, we redraw the one currently here.
         if image is Ellipsis:
             image = self.image
-        elif image is None:
-            pass
-        else:
+        elif image is not None:
             self.image = image
         if xlim is not None:
             self.xlim = xlim
@@ -213,28 +214,60 @@ class FigurePanel(ipw.HBox):
             self.loading_canvas.restore()
         with ipc.hold_canvas():
             if redraw_image:
-                self.image_canvas.clear()
-                if image is not None:
-                    self.image_canvas.draw_image(image, 0, 0, w, h)
+                self.redraw_image()
             if redraw_annotations:
-                self.draw_canvas.clear()
-                # We step through all (visible) annotations and draw them.
-                for (ann_name, points) in self.annotations.items():
-                    # Skip the foreground for now.
-                    if ann_name == self.foreground: continue
-                    if len(points) == 0: continue
-                    # If this annotation isn't visible, we can skip it also.
-                    style = self.state.style(ann_name)
-                    if not style['visible']: continue
-                    # Okay, it needs to be drawn, so convert the figure points
-                    # into image coordinates.
-                    grid_points = self.figure_to_image(points)
-                    # For all the point-matrices here, we need to draw them.
-                    for pts in grid_points:
-                        self.state.draw_path(ann_name, pts, self.draw_canvas)
-            self.loading_canvas.clear()
+                self.redraw_annotations()
         # That's all that's required for now.
-    def change_foreground(self, annot):
+    def redraw_image(self):
+        "Clears the image canvas and redraws the image."
+        self.image_canvas.clear()
+        if self.image is not None:
+            w = self.image_canvas.width
+            h = self.image_canvas.height
+            self.image_canvas.draw_image(self.image, 0, 0, w, h)
+    def redraw_annotations(self):
+        "Clears the draw canvas and redraws all annotations."
+        self.draw_canvas.clear()
+        # We step through all (visible) annotations and draw them.
+        for (ann_name, points) in self.annotations.items():
+            # If ann_name is the foreground, we use None as the style tag.
+            styletag = None if ann_name == self.foreground else ann_name
+            # If there are no points, we can skip.
+            if points is None or len(points) == 0: continue
+            # If this annotation isn't visible, we can skip it also.
+            style = self.state.style(styletag)
+            if not style['visible']: continue
+            # Do we want to stroke an extra circle to mark the cursor?
+            if styletag is None: cursor = self.cursor_position
+            else: cursor = None
+            # Grab the fixed head and tail statuses.
+            fh = self.fixed_head(ann_name) is not None
+            ft = self.fixed_tail(ann_name) is not None
+            # Okay, it needs to be drawn, so convert the figure points
+            # into image coordinates.
+            grid_points = self.figure_to_image(points)
+            # For all the point-matrices here, we need to draw them.
+            for pts in grid_points:
+                self.state.draw_path(styletag, pts, self.draw_canvas,
+                                     fixed_head=fh, fixed_tail=ft,
+                                     cursor=cursor)
+    def change_annotations(self, annots,
+                           fixed_heads=None, fixed_tails=None, redraw=True):
+        """Changes the set of currently visible annotations.
+
+        The argument `annots` must be a dictionary whose keys are the annotation
+        names and whose values are the `N x 2` matrices of annotation points, in
+        figure coordinates. The optional argument `fixed_heads` may be a
+        `dict`-like object whose keys are annotation names and whose values are
+        the `(x,y)` coordinates of the fixed head position for that particular
+        annotation.
+        """
+        self.annotations = annots
+        self.fixed_heads = fixed_heads
+        self.fixed_tails = fixed_tails
+        if redraw:
+            self.redraw_annotations()
+    def change_foreground(self, annot, redraw=True):
         """Changes the foreground annotation (the annotation being edited).
 
         `figure_panel.change_foreground(annot)` changes the current foreground
@@ -242,4 +275,149 @@ class FigurePanel(ipw.HBox):
         annotation is the annotation that is currently being edited by the user.
         """
         self.foreground = annot
+        if redraw:
+            self.redraw_annotations()
+    def toggle_cursor(self):
+        """Toggles the cursor position between head/tail."""
+        orig = self.cursor_position
+        if orig == 'tail':
+            self.cursor_position = 'head'
+        else:
+            self.cursor_position = 'tail'
         self.redraw_canvas(redraw_image=False)
+        return self.cursor_position
+    def fixed_head(self, annot):
+        "Returns the 2D fixed-head point for the given annotation or `None`."
+        if self.fixed_heads is None: return None
+        pt = self.fixed_heads.get(self.foreground)
+        if pt is None: return None
+        if np.shape(pt) != 1: return None
+        if len(pt) != 2: return None
+        if np.isfinite(pt).sum() != 2: return None
+        return pt
+    def fixed_tail(self, annot):
+        "Returns the 2D fixed-tail point for the given annotation or `None`."
+        if self.fixed_tails is None: return None
+        pt = self.fixed_tails.get(self.foreground)
+        if pt is None: return None
+        if np.shape(pt) != 1: return None
+        if len(pt) != 2: return None
+        if np.isfinite(pt).sum() != 2: return None
+        return pt
+    @staticmethod
+    def _to_point_matrix(x, y=None):
+        x = np.asarray(x) if y is None else np.array([[x,y]])
+        if x.shape == (2,):
+            x = x[None,:]
+        elif x.shape != (1,2):
+            raise ValueError(f"bad point shape: {x.shape}")
+        return x
+    def push_point(self, x, y=None, redraw=True):
+        """Push the given image point onto the path at the cursor end.
+
+        The point may be given as `x, y` or as a vector or 1 x 2 matrix. The
+        point is added to the head or the tail depending on the cursor.
+        """
+        if self.foreground is None:
+            # We got a click while not accepting clicks. Just ignore it.
+            return None
+        x = FigurePanel._to_point_matrix(x, y)
+        # Add it on!
+        points = self.annotations.get(self.foreground)
+        if points is None:
+            points = np.zeros((0,2), dtype=float)
+        # We'll need to know the fixed head and tail conditions.
+        fh = self.fixed_head(self.foreground)
+        ft = self.fixed_tail(self.foreground)
+        # How/where we add the point depends partly on whether there are points
+        # and what the fixed head/tail state is.
+        if len(points) == 0:
+            # If this is the first point, we add the fixed points as well.
+            fh = np.zeros((0,2),dtype=float) if fh is None else fh[None,:]
+            ft = np.zeros((0,2),dtype=float) if ft is None else ft[None,:]
+            points = np.vstack([fh, x, ft])
+        else:
+            if fh is None:
+                fh = np.zeros((0,2), dtype=float)
+            else:
+                fh = points[[0]]
+                points = points[1:]
+            if ft is None:
+                ft = np.zeros((0,2), dtype=float)
+            else:
+                ft = points[[-1]]
+                points = points[:-1]
+            # Where we add depends on the cursor position.
+            if self.cursor_position == 'head':
+                points = np.vstack([fh, x, points, ft])
+            else:
+                points = np.vstack([fh, points, x, ft])
+        self.annotations[self.foreground] = points
+        # Redraw the annotations.
+        if redraw:
+            self.redraw_annotations()
+    def push_impoint(self, x, y=None, redraw=True):
+        """Push the given image point onto the selected annotation.
+
+        The point may be given as `x, y` or as a vector or 1 x 2 matrix. Image
+        points are always converted into figure points before being appended to
+        the annotation. The point is added to the head or the tail depending on
+        the cursor.
+        """
+        x = FigurePanel._to_point_matrix(x, y)
+        # Convert to a figure point.
+        x = self.image_to_figure(x)
+        return self.push_point(x, redraw=redraw)
+    def pop_point(self, redraw=True):
+        if self.foreground is None:
+            # We got a backspace while not accepting edits; ignore it.
+            return None
+        # Get the current points.
+        points = self.annotations.get(self.foreground)
+        if points is None or len(points) == 0:
+            # No points to pop!
+            return None
+        fh = self.fixed_head(self.foreground)
+        ft = self.fixed_tail(self.foreground)
+        if fh is None:
+            fh = np.zeros((0,2), dtype=float)
+        else:
+            fh = points[[0]]
+            points = points[1:]
+        if ft is None:
+            ft = np.zeros((0,2), dtype=float)
+        else:
+            ft = points[[-1]]
+            points = points[:-1]
+        if len(points) < 2:
+            if len(points) == 0:
+                import warnings
+                warnings.warn(
+                    "Current annotation contains only fixed points. This could"
+                    " indicate a corrupted save file. Discarding this"
+                    " annotation.")
+            self.annotations[self.foreground] = None
+        else:
+            if self.cursor_position == 'head':
+                points = points[1:]
+            else:
+                points = points[:-1]
+            points = np.vstack([fh, points, ft])
+            self.annotations[self.foreground] = points
+        # Redraw the annotations.
+        if redraw:
+            self.redraw_annotations()
+    def on_mouse_click(self, x, y):
+        """This method is called when the mouse is clicked on the canvas."""
+        # Add to the current contour.
+        self.push_impoint(x, y)
+    def on_key_press(self, key, shift_down, ctrl_down, meta_down):
+        """This method a key is pressed."""
+        key = key.lower()
+        if key == 'tab':
+            self.toggle_cursor()
+        elif key == 'backspace':
+            # Delete from head/tail, wherever the cursor is.
+            self.pop_point()
+        else:
+            pass
