@@ -136,7 +136,7 @@ targets:
 annotations:
     # The grids of images we want to show when annotating each contour 
     # (see images section below).
-    periphery:
+    Periphery:
         - ["polar_angle", "eccentricity"]
         - ["curvature", "highlight_periphery"]
     V1 boundary:
@@ -148,7 +148,6 @@ annotations:
     V3 boundary:
         - ["polar_angle", "eccentricity"]
         - ["curvature", "highlight_vm"]
-    # Additionally, sub001 has a lesion that we want to draw a boundary around.
     lesion:
         # We only want this boundary to appear for sub001, right hemisphere.
         filter: |
@@ -156,7 +155,7 @@ annotations:
             elif target['Hemisphere'] != 'RH':  return False
             else: return True
         # Because this is a boundary, we want the path to be closed.
-        closed: true
+        type: boundary
         # We want this boundary to appear dark red when not selected.
         plot_options:
             color: [0.6, 0, 0]
