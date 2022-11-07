@@ -306,6 +306,24 @@ class ControlPanel(ipw.VBox):
             <div class="cortex-annotate-ControlPanel-hline">
             </div>
         """)
+    @classmethod
+    def _make_infomsg(cls):
+        return ipw.VBox(
+            [ipw.HTML("""
+                <div style="line-height:1.2; margin: 2%;">
+                <center><b>CLICK</b> to add a point to the circled end of the
+                current annotation.</center></div>
+                """),
+             ipw.HTML("""
+                <div style="line-height:1.2; margin: 2%;">
+                <center><b>BACKSPACE</b> to delete the circled point.
+                </center></div>
+                """),
+             ipw.HTML("""
+                <div style="line-height:1.2; margin: 2%;">
+                <center><b>TAB</b> to toggle the circled end.</center></div>
+                """)],
+            layout={'margin': '3%', 'width': '88%'})
     def __init__(self, state,
                  background_color="#f0f0f0", imagesize=256,
                  save_button_color="#e0e0e0"):
@@ -319,6 +337,7 @@ class ControlPanel(ipw.VBox):
             button_style='',
             tooltip='Save all annotations and preferences.',
             layout={'margin':"3% 33% 3% 33%", "width": "34%"})
+        self.info_message = self._make_infomsg()
         hline = self._make_hline()
         self.vbox_children = [
             ipw.HTML("<b style=\"margin: 0% 3% 0% 3%;\">Selection:</b>"),
@@ -328,7 +347,9 @@ class ControlPanel(ipw.VBox):
             hline,
             self.style_panel,
             hline,
-            self.save_button]
+            self.save_button,
+            hline,
+            self.info_message]
         vbox_layout = {'width': '250px'}
         vbox = ipw.VBox(self.vbox_children, layout=vbox_layout)
         children = [self.html_header,
