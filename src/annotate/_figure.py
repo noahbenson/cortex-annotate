@@ -58,7 +58,7 @@ class FigurePanel(ipw.HBox):
         # Make a multicanvas for the image [0] and the drawings [1].
         imsz = imagesize
         # Make a multicanvas.
-        self.multicanvas = ipc.MultiCanvas(3, width=imsz, height=imsz)
+        self.multicanvas = ipc.MultiCanvas(4, width=imsz, height=imsz)
         html = ipw.HTML(f"""
             <style> canvas {{
                 cursor: crosshair !important;
@@ -72,7 +72,8 @@ class FigurePanel(ipw.HBox):
         # Separate out the two canvases.
         self.image_canvas = self.multicanvas[0]
         self.draw_canvas = self.multicanvas[1]
-        self.loading_canvas = self.multicanvas[2]
+        self.fg_canvas = self.multicanvas[2]
+        self.loading_canvas = self.multicanvas[3]
         # Draw the loading screen on the loading canvas and save it.
         self.draw_loading(self.loading_canvas)
         self.loading_canvas.save()
@@ -225,21 +226,29 @@ class FigurePanel(ipw.HBox):
             w = self.image_canvas.width
             h = self.image_canvas.height
             self.image_canvas.draw_image(self.image, 0, 0, w, h)
-    def redraw_annotations(self):
+    def redraw_annotations(self, foreground=True, background=True):
         "Clears the draw canvas and redraws all annotations."
-        self.draw_canvas.clear()
+        if background: self.draw_canvas.clear()
+        if foreground: self.fg_canvas.clear()
         # We step through all (visible) annotations and draw them.
         for (ann_name, points) in self.annotations.items():
             # If ann_name is the foreground, we use None as the style tag.
-            styletag = None if ann_name == self.foreground else ann_name
+            # We also draw on the foreground canvas instead of the background.
+            if ann_name == self.foreground:
+                if not foreground: continue
+                styletag = None
+                canvas = self.fg_canvas
+                cursor = self.cursor_position
+            else:
+                if not background: continue
+                styletag = ann_name
+                canvas = self.draw_canvas
+                cursor = None
             # If there are no points, we can skip.
             if points is None or len(points) == 0: continue
             # If this annotation isn't visible, we can skip it also.
             style = self.state.style(styletag)
             if not style['visible']: continue
-            # Do we want to stroke an extra circle to mark the cursor?
-            if styletag is None: cursor = self.cursor_position
-            else: cursor = None
             # Grab the fixed head and tail statuses.
             fh = self.fixed_head(ann_name) is not None
             ft = self.fixed_tail(ann_name) is not None
@@ -248,9 +257,9 @@ class FigurePanel(ipw.HBox):
             grid_points = self.figure_to_image(points)
             # For all the point-matrices here, we need to draw them.
             for pts in grid_points:
-                self.state.draw_path(styletag, pts, self.draw_canvas,
-                                     fixed_head=fh, fixed_tail=ft,
-                                     cursor=cursor)
+                self.state.draw_path(
+                    styletag, pts, canvas,
+                    fixed_head=fh, fixed_tail=ft, cursor=cursor)
     def change_annotations(self, annots,
                            fixed_heads=None, fixed_tails=None, redraw=True):
         """Changes the set of currently visible annotations.
@@ -284,7 +293,7 @@ class FigurePanel(ipw.HBox):
             self.cursor_position = 'head'
         else:
             self.cursor_position = 'tail'
-        self.redraw_canvas(redraw_image=False)
+        self.redraw_annotations(background=False)
         return self.cursor_position
     def fixed_head(self, annot):
         "Returns the 2D fixed-head point for the given annotation or `None`."
@@ -355,7 +364,7 @@ class FigurePanel(ipw.HBox):
         self.annotations[self.foreground] = points
         # Redraw the annotations.
         if redraw:
-            self.redraw_annotations()
+            self.redraw_annotations(background=False)
     def push_impoint(self, x, y=None, redraw=True):
         """Push the given image point onto the selected annotation.
 
@@ -406,7 +415,7 @@ class FigurePanel(ipw.HBox):
             self.annotations[self.foreground] = points
         # Redraw the annotations.
         if redraw:
-            self.redraw_annotations()
+            self.redraw_annotations(background=False)
     def on_mouse_click(self, x, y):
         """This method is called when the mouse is clicked on the canvas."""
         # Add to the current contour.
