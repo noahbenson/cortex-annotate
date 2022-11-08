@@ -309,7 +309,8 @@ class FiguresConfig(dict):
             termcode = ''
         # Okay, now we can compile together the pieces into a function.
         fnname = f"__fn_{os.urandom(8).hex()}"
-        fncode = (f"def {fnname}(target, key, figure, axes, figsize, dpi):\n"
+        fncode = (f"def {fnname}(target, key, figure, axes, figsize, dpi,\n"
+                  f"             meta_data):\n"
                   f"{initcode}\n{code}\n{termcode}")
         loc = initcfg.exec(fncode)
         return loc[fnname]
