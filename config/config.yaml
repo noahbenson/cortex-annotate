@@ -33,9 +33,13 @@ display:
 # and we want to make sure we have define a subject_path where we will load
 # subjects from.
 init: |
+    # Import libraries.
     import neuropythy as ny, numpy as np
+    # We load our data from this S3 bucket for the NYU Retinotopy Dataset.
     data_src = ny.util.pseudo_path('s3://openneuro.org/ds003787/',
                                    cache_path='/cache/dataset')
+    # This is the neuropythy mask of the occipital pole for making flatmaps.
+    occpole_mask = ('parcellation', 43)
 # We assume in this example that the libraries neuropythy and numpy have been
 # imported (as ny and np respectively) in the init section (see below).
 targets:
@@ -121,7 +125,11 @@ targets:
     flatmap: |
         # Start by importing neuropythy.
         # Make a flatmap projection of the occipital cortex.
-        return ny.to_flatmap('occipital_pole', target['cortex'])
+        c = target['cortex']
+        return c.mask_flatmap(occpole_mask,
+                              map_right='right',
+                              radius=np.pi/2,
+                              registration='native')
     # Finally, it's useful to have information about the image coordinates in
     # the target data, so we add these.
     xlim: |
@@ -130,6 +138,11 @@ targets:
     ylim: |
         y = target['flatmap'].coordinates[1]
         return (np.min(y), np.max(y))
+    projection_data: |
+      proj = target['flatmap'].meta_data['projection']
+      proj = proj.copy(mesh=None)
+      return proj.normalize()
+      
 # When annotating V1-V3 using retinotopic maps; we need contours for the
 # periphery and for V1, V2, and V3 boundaries. When drawn like this, they are
 # all simple contours (not boundaries).
@@ -166,19 +179,23 @@ figures:
     term: |
         axes.set_xlim(target['xlim'])
         axes.set_ylim(target['ylim'])
+        # We also want to put the projection data into the meta-data.
+        meta_data['projection'] = target['projection_data']
     # The highlight images need some specific code to plot correctly.
     highlight_vm: |
         th = target['flatmap'].prop('theta')
-        ny.cortex_plot(target['flatmap'], color=np.abs(np.cos(th)), axes=axes,
-                       cmap='hot', vmax=0, vmin=1)
+        h = (1 - np.abs(np.cos(th)))**2
+        ny.cortex_plot(target['flatmap'], color=h, axes=axes,
+                       cmap='hot', vmin=0, vmax=1)
     highlight_hm: |
         th = target['flatmap'].prop('theta')
-        ny.cortex_plot(target['flatmap'], color=np.abs(np.sin(th)), axes=axes,
-                       cmap='hot', vmax=0, vmin=1)
+        h = (1 - np.abs(np.sin(th)))**2
+        ny.cortex_plot(target['flatmap'], color=h, axes=axes,
+                       cmap='hot', vmin=0, vmax=1)
     highlight_periphery: |
         eccen = target['flatmap'].prop('eccentricity')
         maxecc = np.nanpercentile(eccen, 95)
-        hl = maxecc - eccen
+        hl = np.sqrt(np.abs(maxecc - eccen))*np.sqrt(maxecc)
         ny.cortex_plot(target['flatmap'], color=hl, axes=axes,
                        cmap='hot', vmax=0, vmin=maxecc)
     # The curvature is very straightforward.
