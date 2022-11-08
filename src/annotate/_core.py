@@ -101,14 +101,17 @@ class AnnotationState:
         (fig,ax) = plt.subplots(1,1, figsize=figsize, dpi=dpi)
         # Run the function from the config that draws the figure.
         fn = self.config.figures[figure_name]
-        fn(target, figure_name, fig, ax, figsize, dpi)
+        meta_data = {}
+        fn(target, figure_name, fig, ax, figsize, dpi, meta_data)
         # Tidy things up for image plotting.
         ax.axis('off')
         fig.subplots_adjust(0,0,1,1,0,0)
         path = self.target_figure_path(target, figure_name)
         plt.savefig(path, bbox_inches=None)
         # We also need a companion meta-data file.
-        jscode = json.dumps({'xlim': ax.get_xlim(), 'ylim': ax.get_ylim()})
+        if 'xlim' not in meta_data: meta_data['xlim'] = ax.get_xlim()
+        if 'ylim' not in meta_data: meta_data['ylim'] = ax.get_ylim()
+        jscode = json.dumps(meta_data)
         path = os.path.join(self.target_figure_path(target), 
                             f"{figure_name}.json")
         with open(path, "wt") as f:
@@ -572,8 +575,14 @@ class AnnotationTool(ipw.HBox):
             imagesize=imagesize)
         # Pass the loading context over to the state.
         self.state.loading_context = self.figure_panel.loading_context
+        # Go ahead and initialize the HBox component.
+        super().__init__((self.control_panel, self.figure_panel))
+        # Now, we want to display ourselves while we load, so do that.
+        from IPython.display import display
+        display(self)
         # Give the figure the initial image to plot.
-        self.refresh_figure()
+        with self.state.loading_context:
+            self.refresh_figure()
         # Add a listener for the image size change.
         self.control_panel.observe_imagesize(self.on_imagesize_change)
         # And a listener for the selection change.
@@ -583,4 +592,4 @@ class AnnotationTool(ipw.HBox):
         # And a listener for the save button.
         self.control_panel.observe_save(self.on_save)
         # Finally initialize the outer HBox component.
-        super().__init__((self.control_panel, self.figure_panel))
+
