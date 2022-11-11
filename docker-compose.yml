@@ -9,6 +9,6 @@ services:
          - ${PWD}/save:/save
          - ${PWD}/cache:/cache
          - ${PWD}/config:/config
-         - ${PWD}/.git:/git
+         - ${PWD}:/git
       environment:
         - DOCKER_STACKS_JUPYTER_CMD=notebook
