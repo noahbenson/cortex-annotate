@@ -37,30 +37,40 @@ class InitConfig:
     one to, for example, import a library in the init block that is then
     available throughout the config file.
     """
-    __slots__ = ('code', 'locals')
-    def __init__(self, code, locals=None):
+    __slots__ = ('code', 'locals', 'globals')
+    def __init__(self, code, globals=None, locals=None):
         if code is None:
             code = 'None'
         if not isinstance(code, str):
             raise ConfigError("init", "init section must be a string", code)
         self.code = code
+        # Hack to get the globals function back:
+        globs = globals
+        globals = eval('globals', {}, None)
+        # Save the passed values.
         self.locals = {} if locals is None else locals
-        exec(code, None, self.locals)
-        # Merge in the current globals.
-        self.locals = dict(globals(), **self.locals)
+        self.globals = globals().copy() if globs is None else globs
+        exec(code, self.globals, self.locals)
+        self.globals = dict(self.globals, **self.locals)
+        self.locals = {}
     def exec(self, code, copy=True):
         if copy:
             loc = self.locals.copy()
+            glo = self.globals.copy()
         else:
             loc = self.locals
-        exec(code, loc)
+            glo = self.globals
+        exec(code, glo, loc)
         return loc
     def eval(self, code, copy=True):
         if copy:
             loc = self.locals.copy()
+            glo = self.globals.copy()
         else:
             loc = self.locals
-        return eval(code, loc)
+            glo = self.globals
+        exec(code, glo, loc)
+        return eval(code, glo, loc)
 class DisplayConfig:
     """An object that tracks the configuration of the tool's image display.
 
