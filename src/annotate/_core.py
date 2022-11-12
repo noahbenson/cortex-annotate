@@ -48,18 +48,28 @@ class AnnotationState:
         # If we weren't given a git path, we return standard nothings.
         if self.git_path is None:
             return ('', '')
-        cmd = f'cd {self.git_path} && git config --get remote.origin.url'
-        with os.popen(cmd) as p:
-            repo_url = p.read().strip()
-        repo_split = repo_url.split('/')
-        repo_name = repo_split.pop()
-        while repo_name == '':
+        try:
+            # For some reason, it seems that sometimes docker doesn't fully
+            # mount the directory until we've attempted to list its contents.
+            with os.popen(f'ls {self.git_path}') as f: f.read()
+            # Having performed an ls, go ahead and check git's opinion about the
+            # origin.
+            cmd = f'cd {self.git_path} && git config --get remote.origin.url'
+            with os.popen(cmd) as p:
+                repo_url = p.read().strip()
+            repo_split = repo_url.split('/')
             repo_name = repo_split.pop()
-        repo_user = repo_split.pop()
-        s1 = repo_user.split('/')[-1]
-        s2 = repo_user.split(':')[-1]
-        repo_user = s1 if len(s1) < len(s2) else s2
-        return (repo_user, repo_name)
+            while repo_name == '':
+                repo_name = repo_split.pop()
+            repo_user = repo_split.pop()
+            s1 = repo_user.split('/')[-1]
+            s2 = repo_user.split(':')[-1]
+            repo_user = s1 if len(s1) < len(s2) else s2
+            return (repo_user, repo_name)
+        except Exception as e:
+            from warning import warn
+            warn(f"error finding gitdata: {e}")
+            return ('', '')
     def target_path(self, target):
         """Returns the relative path for a target."""
         if isinstance(target, tuple):
