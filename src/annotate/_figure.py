@@ -32,16 +32,17 @@ class FigurePanel(ipw.HBox):
     `_core.py`.
     """
     class LoadingContext:
-        __slots__ = ('canvas',)
+        __slots__ = ('canvas', 'message')
         _count = defaultdict(lambda:0)
-        def __init__(self, canvas):
+        def __init__(self, canvas, msg="Loading..."):
             self.canvas = canvas
+            self.message = msg
         def __enter__(self):
             c = FigurePanel.LoadingContext._count
             idc = id(self.canvas)
             count = c[idc]
             if count == 0:
-                FigurePanel.draw_loading(self.canvas)
+                FigurePanel.draw_loading(self.canvas, self.message)
             c[idc] = count + 1 
         def __exit__(self, type, value, traceback):
             c = FigurePanel.LoadingContext._count
@@ -52,13 +53,31 @@ class FigurePanel(ipw.HBox):
             if count == 0:
                 self.canvas.clear()
                 del c[idc]
+    def write_message(self, message):
+        """Sets a message in the message canvas."""
+        dc = self.message_canvas
+        with ipc.hold_canvas():
+            dc.clear()
+            dc.fill_style = 'white'
+            dc.global_alpha = 0.85
+            dc.fill_rect(0, 0, dc.width, dc.height)
+            dc.global_alpha = 1
+            dc.font = "32px HelveticaNeue"
+            dc.fill_style = 'black'
+            dc.text_align = 'left'
+            dc.text_baseline = 'top'
+            dc.fill_text(message, dc.width//15, dc.height//15,
+                         max_width=(dc.width - dc.width//15*2))
+    def clear_message(self):
+        """Clears the current message canvas."""
+        self.message_canvas.clear()
     def __init__(self, state, imagesize=256):
         self.state = state
         self.imagesize = imagesize
         # Make a multicanvas for the image [0] and the drawings [1].
         imsz = imagesize
         # Make a multicanvas.
-        self.multicanvas = ipc.MultiCanvas(4, width=imsz, height=imsz)
+        self.multicanvas = ipc.MultiCanvas(5, width=imsz, height=imsz)
         html = ipw.HTML(f"""
             <style> canvas {{
                 cursor: crosshair !important;
@@ -74,6 +93,7 @@ class FigurePanel(ipw.HBox):
         self.draw_canvas = self.multicanvas[1]
         self.fg_canvas = self.multicanvas[2]
         self.loading_canvas = self.multicanvas[3]
+        self.message_canvas = self.multicanvas[4]
         # Draw the loading screen on the loading canvas and save it.
         self.draw_loading(self.loading_canvas)
         self.loading_canvas.save()
@@ -88,13 +108,16 @@ class FigurePanel(ipw.HBox):
         self.xlim = None
         self.ylim = None
         self.annotations = {}
+        self.builtin_annotations = {}
         self.cursor_position = 'head'
         self.fixed_heads = None
         self.fixed_tails = None
+        self.annotation_types = {}
+        self.ignore_input = False
         # Initialize our parent class.
         super().__init__([html, self.multicanvas])
     @classmethod
-    def draw_loading(cls, dc):
+    def draw_loading(cls, dc, message='Loading...'):
         """Clears the draw canvas and draws the loading screen."""
         with ipc.hold_canvas():
             dc.clear()
@@ -105,7 +128,7 @@ class FigurePanel(ipw.HBox):
             dc.font = "32px HelveticaNeue"
             dc.fill_style = 'black'
             dc.text_align = 'center'
-            dc.fill_text("Loading...", 120, 120)
+            dc.fill_text(message, 120, 120)
     def resize_canvas(self, new_size):
         """Resizes the figure canvas so that images appear at the given size.
 
@@ -252,6 +275,16 @@ class FigurePanel(ipw.HBox):
             # Grab the fixed head and tail statuses.
             fh = self.fixed_head(ann_name) is not None
             ft = self.fixed_tail(ann_name) is not None
+            # See if the boundary is closed and connected.
+            atype = self.annotation_type(ann_name)
+            if atype in ('point', 'points'):
+                (closed, joined) = (False, False)
+            elif atype in ('path', 'contour', 'paths', 'contours'):
+                (closed, joined) = (False, True)
+            elif atype in ('boundary', 'boundaries', 'loop', 'loops'):
+                (closed, joined) = (True, True)
+            else:
+                raise ValueError(f"invalid annotation type: {atype}")
             # Okay, it needs to be drawn, so convert the figure points
             # into image coordinates.
             grid_points = self.figure_to_image(points)
@@ -259,9 +292,25 @@ class FigurePanel(ipw.HBox):
             for pts in grid_points:
                 self.state.draw_path(
                     styletag, pts, canvas,
-                    fixed_head=fh, fixed_tail=ft, cursor=cursor)
-    def change_annotations(self, annots,
-                           fixed_heads=None, fixed_tails=None, redraw=True):
+                    fixed_head=fh, fixed_tail=ft, cursor=cursor,
+                    closed=closed, path=joined)
+        # Next, we step through all the (visible) builtin annotations.
+        if background:
+            for (ann_name, dat) in self.builtin_annotations.items():
+                if dat is None: continue
+                style = self.state.style(ann_name)
+                if not style['visible']: continue
+                points_list = dat.get_data()
+                for points in points_list:
+                    grid_points = self.figure_to_image(points)
+                    for pts in grid_points:
+                        self.state.draw_path(ann_name, pts, self.draw_canvas,
+                                             path=False)
+        # That's it.
+    def change_annotations(self, annots, builtin_annots,
+                           redraw=True, allow=True,
+                           fixed_heads=None, fixed_tails=None,
+                           annotation_types=None):
         """Changes the set of currently visible annotations.
 
         The argument `annots` must be a dictionary whose keys are the annotation
@@ -272,10 +321,13 @@ class FigurePanel(ipw.HBox):
         annotation.
         """
         self.annotations = annots
+        self.builtin_annotations = builtin_annots
         self.fixed_heads = fixed_heads
         self.fixed_tails = fixed_tails
+        self.annotation_types = annotation_types
         if redraw:
             self.redraw_annotations()
+        self.ignore_input = not allow
     def change_foreground(self, annot, redraw=True):
         """Changes the foreground annotation (the annotation being edited).
 
@@ -295,24 +347,32 @@ class FigurePanel(ipw.HBox):
             self.cursor_position = 'tail'
         self.redraw_annotations(background=False)
         return self.cursor_position
-    def fixed_head(self, annot):
+    def fixed_head(self, annot=None):
         "Returns the 2D fixed-head point for the given annotation or `None`."
         if self.fixed_heads is None: return None
-        pt = self.fixed_heads.get(self.foreground)
+        if annot is None: annot = self.foreground
+        pt = self.fixed_heads.get(annot)
         if pt is None: return None
-        if np.shape(pt) != 1: return None
+        if len(np.shape(pt)) != 1: return None
         if len(pt) != 2: return None
         if np.isfinite(pt).sum() != 2: return None
         return pt
-    def fixed_tail(self, annot):
+    def fixed_tail(self, annot=None):
         "Returns the 2D fixed-tail point for the given annotation or `None`."
         if self.fixed_tails is None: return None
-        pt = self.fixed_tails.get(self.foreground)
+        if annot is None: annot = self.foreground
+        pt = self.fixed_tails.get(annot)
         if pt is None: return None
-        if np.shape(pt) != 1: return None
+        if len(np.shape(pt)) != 1: return None
         if len(pt) != 2: return None
         if np.isfinite(pt).sum() != 2: return None
         return pt
+    def annotation_type(self, annot=None):
+        "Returns the annotation type of the given annotation."
+        if self.annotation_types is None: return 'points'
+        if annot is None: annot = self.foreground
+        at = self.annotation_types.get(annot)
+        return 'points' if at is None else at
     @staticmethod
     def _to_point_matrix(x, y=None):
         x = np.asarray(x) if y is None else np.array([[x,y]])
@@ -338,6 +398,7 @@ class FigurePanel(ipw.HBox):
         # We'll need to know the fixed head and tail conditions.
         fh = self.fixed_head(self.foreground)
         ft = self.fixed_tail(self.foreground)
+        at = self.annotation_type(self.foreground)
         # How/where we add the point depends partly on whether there are points
         # and what the fixed head/tail state is.
         if len(points) == 0:
@@ -357,7 +418,9 @@ class FigurePanel(ipw.HBox):
                 ft = points[[-1]]
                 points = points[:-1]
             # Where we add depends on the cursor position.
-            if self.cursor_position == 'head':
+            if at in ('point','points'):
+                points = np.reshape(x, (1,2))
+            elif self.cursor_position == 'head':
                 points = np.vstack([fh, x, points, ft])
             else:
                 points = np.vstack([fh, points, x, ft])
@@ -418,10 +481,14 @@ class FigurePanel(ipw.HBox):
             self.redraw_annotations(background=False)
     def on_mouse_click(self, x, y):
         """This method is called when the mouse is clicked on the canvas."""
+        if self.ignore_input:
+            return
         # Add to the current contour.
         self.push_impoint(x, y)
     def on_key_press(self, key, shift_down, ctrl_down, meta_down):
         """This method a key is pressed."""
+        if self.ignore_input:
+            return
         key = key.lower()
         if key == 'tab':
             self.toggle_cursor()

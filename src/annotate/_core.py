@@ -299,8 +299,11 @@ class AnnotationState:
         rval.update(self.config.display.plot_options)
         if annotation is None:
             rval.update(self.config.display.fg_options)
-        else:
+        elif annotation in self.config.annotations:
             rval.update(self.config.annotations[annotation].plot_options)
+        else:
+            d = self.config.builtin_annotations[annotation].plot_options
+            rval.update(d)
         # Finally, merge in the user's preferences.
         rval.update(prefs)
         # And return.
@@ -341,6 +344,15 @@ class AnnotationState:
         "Loads the annotations for the current tool user from the save path."
         return ldict({tid: delay(self.load_target_annotations, tid)
                       for tid in self.config.targets.keys()})
+    def _fix_targets(self, tid):
+        targ = self.config.targets[tid]
+        return {k: annot.with_target(targ)
+                for (k,annot) in self.config.builtin_annotations.items()}
+    def load_builtin_annotations(self):
+        "Preps the builtin annotations for the tool."
+        # We really just need to prep individual BuiltinAnnotation objects.
+        return ldict({tid: delay(self._fix_targets, tid)
+                      for tid in self.config.targets.keys()})
     def save_target_annotations(self, tid):
         "Saves the annotations for the current tool user for a single target"
         # Get the taget's annotations.
@@ -378,7 +390,8 @@ class AnnotationState:
         self.save_preferences()
         self.save_annotations()
     __slots__ = ("config", "cache_path", "save_path", "git_path", "username",
-                 "annotations", "preferences", "loading_context")
+                 "annotations", "builtin_annotations", "preferences",
+                 "loading_context")
     def __init__(self,
                  config_path='/config/config.yaml',
                  cache_path='/cache',
@@ -407,6 +420,7 @@ class AnnotationState:
         self.loading_context = loading_context
         # (Lazily) load the annotations.
         self.annotations = self.load_annotations()
+        self.builtin_annotations = self.load_builtin_annotations()
         # And (lazily) load the preferences.
         self.preferences = self.load_preferences()
     def apply_style(self, ann_name, canvas, style=None):
@@ -447,8 +461,10 @@ class AnnotationState:
         canvas.stroke_style = c
         canvas.fill_style = c
         return v
-    def draw_path(self, ann_name, points, canvas, path=True, style=None,
-                  fixed_head=False, fixed_tail=False, cursor=None):
+    def draw_path(self, ann_name, points, canvas, 
+                  path=True, closed=False,
+                  style=None, cursor=None,
+                  fixed_head=False, fixed_tail=False):
         """Draws the given path on the given canvas using the named style.
 
         `state.draw_path(name, path, canvas)` applies the style for the named
@@ -466,10 +482,12 @@ class AnnotationState:
         # First, draw stroke the path.
         if path and len(points) > 1:
             canvas.begin_path()
-            (x,y) = points[0]
-            canvas.move_to(x,y)
+            (x0,y0) = points[0]
+            canvas.move_to(x0, y0)
             for (x,y) in points[1:]:
                 canvas.line_to(x, y)
+            if closed:
+                canvas.line_to(x0, y0)
             canvas.stroke()
         # Next, draw the points.
         sty = self.style(ann_name)
@@ -530,14 +548,57 @@ class AnnotationTool(ipw.HBox):
     def refresh_figure(self):
         targ = self.control_panel.target
         annot = self.control_panel.annotation
+        targ_annots = self.state.annotations[targ]
+        # Figure out the fixed heads and tails
+        annot_data = self.state.config.annotations[annot]
+        (fs, reqs) = ([], [])
+        for fixed in [annot_data.fixed_head, annot_data.fixed_tail]:
+            if fixed is not None:
+                reqs += fixed['requires']
+            fs.append(fixed)
+        missing = []
+        found = {}
+        for r in reqs:
+            xy = targ_annots.get(r, ())
+            if len(xy) == 0:
+                missing.append(r)
+            else:
+                found[r] = xy
+        if len(missing) == 0:
+            target = self.state.config.targets[targ]
+            try:
+                fs = [(None if f is None else f['calculate'](target, found))
+                      for f in fs]
+                error = None
+            except Exception as e:
+                error = f"Error generating fixed points:\n  {e}"
+                fs = None
+        else:
+            fs = None
+            annlist = ", ".join(missing)
+            error = f"The following annotations are required:\n  {annlist}"
+        (fh,ft) = (None,None) if fs is None else fs
+        self.figure_panel.change_annotations(
+            targ_annots,
+            self.state.builtin_annotations[targ],
+            redraw=False,
+            annotation_types=self.state.config.annotation_types,
+            allow=(len(missing) == 0 and fs is not None),
+            fixed_heads={annot: fh},
+            fixed_tails={annot: ft})
+        self.figure_panel.change_foreground(annot, redraw=False)
+        # Draw the grid image.
         (imdata, grid_shape, meta) = self.state.grid(targ, annot)
         im = ipw.Image(value=imdata, format='png')
-        self.figure_panel.change_annotations(self.state.annotations[targ],
-                                             redraw=False)
-        self.figure_panel.change_foreground(self.control_panel.annotation,
-                                            redraw=False)
         meta = {k:meta[k] for k in ('xlim','ylim') if k in meta}
         self.figure_panel.redraw_canvas(image=im, grid_shape=grid_shape, **meta)
+        # If the annotation requires something that is missing, or if a fixed
+        # head or tail can't yet be calculated, we need to put an appropriate
+        # message up.
+        if error is not None:
+            self.figure_panel.write_message(error)
+        else:
+            self.figure_panel.clear_message()
     def on_selection_change(self, key, change):
         "This method runs when the control panel's selection changes."
         if change.name != 'value': return

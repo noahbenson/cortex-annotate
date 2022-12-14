@@ -155,6 +155,7 @@ class StylePanel(ipw.VBox):
         self.user_preferences = {}
         entries = ['Selected Annotation']
         entries += list(state.config.annotations.keys())
+        entries += list(state.config.builtin_annotations.keys())
         layout = dict(width="94%", margin="0% 3% 0% 3%")
         self.style_dropdown = ipw.Dropdown(
             options=entries, value=entries[0], description="Annotation:",
