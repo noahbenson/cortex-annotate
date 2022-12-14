@@ -58,11 +58,15 @@ RUN curl -L -o /data/required_subjects/fsaverage.tar.gz \
       https://github.com/noahbenson/neuropythy/wiki/files/fsaverage.tar.gz \
  && cd /data/required_subjects \
  && tar zxf fsaverage.tar.gz \
+ && chown -R root.root ./fsaverage \
+ && chmod -R 775 ./fsaverage \
  && rm fsaverage.tar.gz
 RUN curl -L -o /data/required_subjects/fsaverage_sym.tar.gz \
       https://github.com/noahbenson/neuropythy/wiki/files/fsaverage_sym.tar.gz \
  && cd /data/required_subjects \
  && tar zxf fsaverage_sym.tar.gz \
+ && chown -R root.root ./fsaverage_sym \
+ && chmod -R 775 ./fsaverage_sym \
  && rm ./fsaverage_sym.tar.gz
 
 
@@ -97,7 +101,7 @@ COPY docker/jupyter_notebook_config.py /home/$NB_USER/.jupyter/
 COPY docker/custom.css                 /home/$NB_USER/.jupyter/custom/
 COPY docker/custom.js                  /home/$NB_USER/.jupyter/custom/
 COPY docker/ipython_kernel_config.py   /home/$NB_USER/.ipython/profile_default/
-COPY docker/npythy.json                /home/$NB_USER/.npythy.json
+COPY docker/npythy.json                /home/$NB_USER/.npythyrc
 COPY docker/ipython-startup.py         /home/$NB_USER/.ipython/profile_default/startup/
 COPY notebooks/annotate.ipynb          /home/$NB_USER/work/AnnotationTool.ipynb
 # We want to trust the notebook (this also fixed id-less cells).
