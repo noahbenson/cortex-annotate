@@ -389,6 +389,8 @@ class BuiltinAnnotationsConfig(dict):
     def __init__(self, yaml, init):
         from ._core import AnnotationState
         # The yaml should just contain entries for the annotations.
+        if yaml is None:
+            yaml = {}
         if not isinstance(yaml, dict):
             raise ConfigError("builtin_annotations",
                               "builtin_annotations must contain a mapping",
