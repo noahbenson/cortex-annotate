@@ -109,7 +109,7 @@ class FigurePanel(ipw.HBox):
         self.ylim = None
         self.annotations = {}
         self.builtin_annotations = {}
-        self.cursor_position = 'head'
+        self.cursor_position = 'tail'
         self.fixed_heads = None
         self.fixed_tails = None
         self.annotation_types = {}
