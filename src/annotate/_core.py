@@ -363,11 +363,15 @@ class AnnotationState:
             # (and thus can't have any updates).
             if annots.is_lazy(k): continue
             # Get this annotation's coordinates.
-            coords = np.asarray(annots[k])
-            # Make sure they're the right shape.
-            if len(coords.shape) != 2 or coords.shape[1] != 2:
-                raise RuntimeError(f"annotation {k} for target {tid} has"
-                                   f" invalid shape {coords.shape}")
+            coords = annots.get(k)
+            if coords is None:
+                coords = np.array(())
+            else:
+                coords = np.asarray(annots[k])
+                # Make sure they're the right shape.
+                if len(coords.shape) != 2 or coords.shape[1] != 2:
+                    raise RuntimeError(f"annotation {k} for target {tid} has"
+                                       f" invalid shape {coords.shape}")
             # If they're empty, no need to save them; delete the file if it
             # exists instead.
             path = self.target_save_path(tid, k)
