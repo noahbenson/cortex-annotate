@@ -1,0 +1,196 @@
+display:
+  # We want images to be 512 x 512 pixels.
+  figsize: [4, 4]
+  dpi: 128
+  # By default, we want annotations to appear dark bluish with fairly thin lines
+  # when not selected. We don't want unselected annotations to have points.
+  plot_options:
+    color: [0.25, 0.25, 0.65]
+    linewidth: 1
+    markersize: 0
+    linestyle: "solid"
+  # We want selected annotations to be brighter and with markers/points plotted.
+  # We can keep the same linewidth and linestyle as in plot_options (which is
+  # the default for anything not re-specified in fg_options).
+  fg_options:
+    color: [0.35, 0.35, 0.8]
+    markersize: 2
+# In the init section, we want to make sure numpy and neuropythy are imported,
+# and we want to make sure we have define a subject_path where we will load
+# subjects from.
+init: |
+    # Import libraries.
+    import neuropythy as ny, numpy as np
+    # We load our data from this S3 bucket for the NYU Retinotopy Dataset.
+    data_src = ny.util.pseudo_path('s3://openneuro.org/ds003787/',
+                                   cache_path='/cache/dataset')
+    # This is the neuropythy mask of the occipital pole for making flatmaps.
+    occpole_mask = ('parcellation', 43)
+# We assume in this example that the libraries neuropythy and numpy have been
+# imported (as ny and np respectively) in the init section (see below).
+targets:
+    # The Subject ID is selectable because there are 3 of them.
+    Subject ID:
+        - sub-wlsubj001
+        - sub-wlsubj004
+        - sub-wlsubj006
+        - sub-wlsubj007
+        - sub-wlsubj014
+        - sub-wlsubj019
+        - sub-wlsubj023
+        - sub-wlsubj042
+        - sub-wlsubj043
+        - sub-wlsubj045
+        - sub-wlsubj046
+        - sub-wlsubj055
+        - sub-wlsubj056
+        - sub-wlsubj057
+        - sub-wlsubj062
+        - sub-wlsubj064
+        - sub-wlsubj067
+        - sub-wlsubj071
+        - sub-wlsubj076
+        - sub-wlsubj079
+        - sub-wlsubj081
+        - sub-wlsubj083
+        - sub-wlsubj084
+        - sub-wlsubj085
+        - sub-wlsubj086
+        - sub-wlsubj087
+        - sub-wlsubj088
+        - sub-wlsubj090
+        - sub-wlsubj091
+        - sub-wlsubj092
+        - sub-wlsubj094
+        - sub-wlsubj095
+        - sub-wlsubj104
+        - sub-wlsubj105
+        - sub-wlsubj109
+        - sub-wlsubj114
+        - sub-wlsubj115
+        - sub-wlsubj116
+        - sub-wlsubj117
+        - sub-wlsubj118
+        - sub-wlsubj120
+        - sub-wlsubj121
+        - sub-wlsubj122
+        - sub-wlsubj126
+    # Once we have established the subject ID, we can load the subject object,
+    # which we will need for generating images.
+    # This code block assumes that the `init` section defined the
+    # `data_src` variable.
+    subject: |
+        subj = target['Subject ID']
+        path = data_src.subpath('derivatives', 'freesurfer', subj)
+        return ny.freesurfer_subject(path)
+    # The hemisphere is another selectable item because there are 2 of them.
+    Hemisphere:
+        - LH
+        - RH
+    # Cortex, which has a string, is again a lazy value defined by a code
+    # snippet. This snippet extracts the Cortex object for the selected
+    # hemisphere.
+    cortex: |
+        subj = target['Subject ID']
+        h = target['Hemisphere'].lower()
+        ctx = target['subject'].hemis[h]
+        # Load the retinotopy also.
+        path = data_src.subpath('derivatives', 'prfanalyze-vista', subj,
+                                'ses-nyu3t01')
+        props = dict(
+            polar_angle = ny.load(path.local_path(f"{h}.angle_adj.mgz")),
+            theta = ny.load(path.local_path(f"{h}.angle.mgz")),
+            eccentricity = ny.load(path.local_path(f"{h}.eccen.mgz")),
+            x = ny.load(path.local_path(f"{h}.x.mgz")),
+            y = ny.load(path.local_path(f"{h}.y.mgz")),
+            radius = ny.load(path.local_path(f"{h}.sigma.mgz")),
+            cod = ny.load(path.local_path(f"{h}.vexpl.mgz")))
+        return ctx.with_prop(props)
+    # Additionally, we create a flatmap projection for the hemisphere. Here we
+    # make a projection of the occipital cortex.
+    flatmap: |
+        # Start by importing neuropythy.
+        # Make a flatmap projection of the occipital cortex.
+        c = target['cortex']
+        return c.mask_flatmap(occpole_mask,
+                              map_right='right',
+                              radius=np.pi/2,
+                              registration='native')
+    # Finally, it's useful to have information about the image coordinates in
+    # the target data, so we add these.
+    xlim: |
+        x = target['flatmap'].coordinates[0]
+        return (np.min(x), np.max(x))
+    ylim: |
+        y = target['flatmap'].coordinates[1]
+        return (np.min(y), np.max(y))
+    projection_data: |
+      proj = target['flatmap'].meta_data['projection']
+      proj = proj.copy(mesh=None)
+      return proj.normalize()
+      
+# When annotating V1-V3 using retinotopic maps; we need contours for the
+# periphery and for V1, V2, and V3 boundaries. When drawn like this, they are
+# all simple contours (not boundaries).
+annotations:
+    # The grids of images we want to show when annotating each contour 
+    # (see images section below).
+    Periphery:
+        - ["polar_angle", "eccentricity"]
+        - ["curvature", "highlight_periphery"]
+    V1 boundary:
+        - ["polar_angle", "eccentricity"]
+        - ["curvature", "highlight_vm"]
+    V2 boundary:
+        - ["polar_angle", "eccentricity"]
+        - ["curvature", "highlight_hm"]
+    V3 boundary:
+        - ["polar_angle", "eccentricity"]
+        - ["curvature", "highlight_vm"]
+    lesion:
+        # We only want this boundary to appear for sub001, right hemisphere.
+        filter: |
+            if   target['Subject ID'] != 'sub-wlsubj001': return False
+            elif target['Hemisphere'] != 'RH':  return False
+            else: return True
+        # Because this is a boundary, we want the path to be closed.
+        type: boundary
+        # We want this boundary to appear dark red when not selected.
+        plot_options:
+            color: [0.6, 0, 0]
+        grid: [["cod", "curvature"]]
+figures:
+    # We don't need an init block, but we do want to make sure the images all
+    # have the xlim and ylim set correctly.
+    term: |
+        axes.set_xlim(target['xlim'])
+        axes.set_ylim(target['ylim'])
+        # We also want to put the projection data into the meta-data.
+        meta_data['projection'] = target['projection_data']
+    # The highlight images need some specific code to plot correctly.
+    highlight_vm: |
+        th = target['flatmap'].prop('theta')
+        h = (1 - np.abs(np.cos(th)))**2
+        ny.cortex_plot(target['flatmap'], color=h, axes=axes,
+                       cmap='hot', vmin=0, vmax=1)
+    highlight_hm: |
+        th = target['flatmap'].prop('theta')
+        h = (1 - np.abs(np.sin(th)))**2
+        ny.cortex_plot(target['flatmap'], color=h, axes=axes,
+                       cmap='hot', vmin=0, vmax=1)
+    highlight_periphery: |
+        eccen = target['flatmap'].prop('eccentricity')
+        maxecc = np.nanpercentile(eccen, 95)
+        hl = np.sqrt(np.abs(maxecc - eccen))*np.sqrt(maxecc)
+        ny.cortex_plot(target['flatmap'], color=hl, axes=axes,
+                       cmap='hot', vmax=0, vmin=maxecc)
+    # The curvature is very straightforward.
+    curvature: |
+        ny.cortex_plot(target['flatmap'])
+    # The COD needs some special parameters also.
+    cod: |
+        ny.cortex_plot(target['flatmap'], color='cod', axes=axes, cmap='hot',
+                       vmin=0, vmax=1)
+    # The rest are PRF properties.
+    _: |
+        ny.cortex_plot(target['flatmap'], color=key, axes=axes)
