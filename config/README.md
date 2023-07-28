@@ -12,7 +12,7 @@ directory; see the `/src/README.md` file.)
 ## Directory Contents ##########################################################
 
 * **`build_root.sh`**: This file is a BASH script for any commands that should
-  be run when the docker image for the annotate tool is built. The commands in
+  be run when the docker image when the annotate tool is built. The commands in
   this file are run by the root user inside the docker-image after all other
   parts of the build process except for the `build_user.sh` script, also in this
   directory. When possible, it is recommended that one use the user version of
@@ -25,7 +25,8 @@ directory; see the `/src/README.md` file.)
   generally important.
 * **`config.yaml`**: This is the primary configuration file for the annotation
   tool. This is the primary file that must be edited in order to have a viable
-  `cortex-annotate` project. The format specification of this file is below.
+  `cortex-annotate` project. The format specification of this file is detailed
+  below.
 * **`requirements.txt`**: This file is a simple PyPI-style requirements file
   with one Python library requirement listed per line. These requirements are
   automatically installed when the docker image is built.
@@ -44,83 +45,254 @@ tool. It must parse into a mapping (`dict`) at the top level. This section
 describes the format of the configuration file and provides examples.
 
 
+### General Principles
+
+#### Python Code Snippets
+
+The `config.yaml` file frequently expects that entries in the file will contain
+strings that are interpreted as Python code snippets. These code snippets are
+generally compiled as the bodies of Python functions with specificly named
+parameters. For example, the parameter name `target` is used by most such code
+snippets to represent the data for the annotation target currently selected by
+the annotation tool's user. The return values of these code snippets are used by
+the `cortex-annotate` tool in various ways depending on the specific code
+snippet.
+
+#### Paths and Runtime
+
+It is important to remember that these code snippets will generally be run
+inside of the docker container that is used to run the Jupyter notebook that
+runs the annotation tool. Accordingly, paths should generally be absolute within
+the docker image. The following directories are provided automatically:
+ * `/cache` is a cache directory that maps to the `cache` directory of the
+   `cortex-annotate` repository. It can be used for storing temporary files (but
+   note that the user may clean these out between runs of the docker).
+ * `/config` is mapped to the `config` directory of the repository.
+ * `/save` is mapped to the `save` directory of the repository (note that save
+   files are usually managed by `cortex-annotate` so it should not generally be
+   necessary to interact with this directory directly).
+ * `/src` is mapped to the `src` directory of the repository. In particular,
+   this can be used to hold Python library code that one wants to run but does
+   not want to store in the `config.yaml` file.
+
+#### Including External Python Code
+
+It is often the case that one prefers to write Python code in Python code files
+and libraries rather than in the `config.yaml` file. This can be accomplished by
+putting code in the repository's `src` directory. This directory is always
+mounted inside of the running docker container that serves the Jupyter notebook
+as `/src` and is always put on the `PYTHONPATH` environment
+variable. Accordingly, any library directory in the `src` directory can be
+imported and run by code in the `config.yaml` file.
+
+
 ### Top Level Configuration Keys
 
 The contents of the `config.yaml` file must parse into a Python `dict` object
 whose allowed keys are documented in this section.
 
+#### `init` (optional)
+The `init` key is optional; if it is provided, then it must be mapped to a
+string, which is intrpreted as a Python code snippet. Unlike other code snippets
+in the `config.yaml` file, this code snippet is not compiled into a function and
+thus should not have a return value. Instead, this code snippet is run in the
+global namespace, and variables declared here are made available to all other
+code snippets in the file. In general, this section is used to initialize code
+or data that is used throughout the config file.
+
+**Example**. The following `yaml` block contains example initialization code for
+the Natural Scene Dataset (NSD). The entire `config.yaml` file for the NSD can
+be found in the `NSD` branch of the `cortex-annotate` repository.
+
+```yaml
+init: |
+  # Several code-blocks in this config.yaml file use the numpy and neuropythy
+  # libraries, so we load them here.
+  import numpy as np
+  import neuropythy as ny
+  # We also want to create an object that tracks the S3 path/data for the NSD.
+  # We use the cache path '/cache/nsd' because the /cache directory is always
+  # abailable for use with cache files inside of the docker container that runs
+  # the annotation tool.
+  nsd_path = ny.util.pseudo_path(
+      's3://natural-scenes-dataset/nsddata/',
+      cache_path='/cache/nsd')
+  # We will specifically load these population receptive fields (pRF) files in
+  # order to draw visual area annotations on the retinotopic maps for each
+  # subject.
+  nsd_prf_files = {
+      "polar_angle": "prfangle.mgz",
+      "eccentricity": "prfeccentricity.mgz",
+      "cod": "prfR2.mgz"}
+  # This occipital pole mask is used with neuropythy's flatmap code; the tuple
+  # indicates that the FreeSurfer parcellation property uses the value 43 to
+  # indicate the occipital pole of the brain.
+  occpole_mask = ('parcellation', 43)
+```
 
 #### `targets` (required)
-
 The `targets` key must contain instructions for what objects can be selected for
 annotation. In this context, "objects" are typically individual hemispheres from
-a dataset, as identified by subject ID and hemisphere name (`"lh"` or
-`"rh"`). The annotations that are to be placed on an object and the images that
-are rendered for annotation are defined in the `annotations` and `images`
-section; the targets of annotation are usually the hemispheres.
+a dataset, as identified by subject ID and hemisphere name (`"lh"` or `"rh"`),
+but this is not enforced. A dataset could, for example, define individual
+targets to be different ROIs or different views of a hemisphere. The annotations
+(contours or boundaries) that are to be placed on a target are defined in the
+`annotations` section while the images that are displayed when a target is
+selected, onto which the annotations are drawn, are defined in the `images`
+section.
 
-The contents of the `targets` section should be a mapping itself; each key of
-the mapping will become a single drop-down menu in the annotation tool for
-selectign the annotation target and thus must usually be a list of concrete
-string or number values. In Python code snippets that are provided elsewhere in
-this file, the target data is provided as a local variable `target` containing a
-mapping object (a `dict`-like object) of the target keys mapped to their
-selected values. If a key is mapped to a list with only one element, then that
-element is not included in the selection panel of the annotation tool, but it is
-included in the `target` dict of code snippets.
+The contents of the `targets` section should be a mapping itself. Each key of
+this mapping will become either a single drop-down menu in the annotation tool,
+used for selecting the annotation target, or will become a piece of meta-data
+associated with the chosen target. For any target key that is to become a
+dropdown menu, the key must be mapped to a list of concrete string or number
+values. If this list of concrete values contains only one element, then the key
+is not shown in the annotation tool (but the single value is included in the
+target selection nonetheless).  Alternatively, if a a target key is mapped to a
+single string (which may be a multi-line string but not a list of strings), then
+it is treated as a Python code snipped. Such a snippet is compiled into a
+function with a single parameter `target` which is always a Python `dict`
+containing all the target data above it in the `targets` section. For example,
+the following `targets` section first defines a `Subject ID`, which becomes a
+dropdown menu in the annotation tool from which the user selects a subject; the
+target key after the `Subject Name` is the `subject_id` key, and because it maps
+to a multi-line string instead of a list, it is treated as a code-snippet that
+extracts the integer identifier for the chosen subject. The return value of this
+code-snippet/function becomes part of the `target` data (`target['subject_id']`)
+that is used throughout the tool.
 
-Additionally, a key in the `targets` section whose value is a string is treated
-as a Python code snippet that is run to produce the actual value for the given
-key. Such keys are called *lazy* keys (as opposed to *concrete* keys whose
-values must be lists), and they do not appear in the selection panel of the
-annotation tool. However, they are available in other code snippets throughout
-the configuration file. When a lazy ekey's code snippet is run, it has access to
-a local variable `target`, which is a `dict` object of the concrete key-value
-pairs, and the snippet evaluates to its return value (i.e., you must include a
-`return` statement or the block evaluates to `None`).
+```yaml
+targets:
+  Subject Name:
+    - Subject 1
+    - Subject 2
+    - Subject 3
+  subject_id: |
+    # Get the selected Subject Name
+    sid = target['Subject Name']
+    # Transform this id into an integer identifier.
+    sid_int = int(sid.split()[1])
+    # This integer is the subject_id:
+    return sid_int
+```
 
-Example:
+Any code snippet in the `targets` section is passed a single parameter:
+`target`, which is a dictionary containing all of the target keys that precede
+the code snippet. These keys are mapped to either the entry that was chosen by
+the user (for keys that map to lists, such as `Subject Name` in the example
+above) or to the return value of the key's code snippet (for keys that map to
+strings, such as `subject_id` in the example above). In Python code snippets
+that appear in other sections in this file, the target data is also provided as
+a local variable `target` containing `dict`-like object of all the target keys
+mapped to their selected or calculated values. If a key in the `targets` section
+is mapped to a list with only one element, then that element is not included in
+the selection panel of the annotation tool, but it is included in the `target`
+dict of code snippets.
+
+
+**Example**: the following `yaml` block demonstrates how target data can be
+prepared for the Natural Scene Dataset (NSD). The entire `config.yaml` file for
+the NSD can be found in the `NSD` branch of the `cortex-annotate` repository.
 
 ```yaml
 # We assume in this example that the libraries neuropythy and numpy have been
 # imported (as ny and np respectively) in the init section (see below).
 targets:
-    # The subject ID is selectable because there are 3 of them.
-    subject:
-        - sub001
-        - sub002
-        - sub003
-    # The nysubject item is a code snippet that loads a neuropythy Subject
-    # object, which we will need for generating images.
-    # This code block assumes that the `init` section defined the
-    # `subject_path` variable.
-    nysubject: |
-        subj = target['subject']
-        return ny.freesurfer_subject(f'{subject_path}/{subj}')
-    # The hemisphere is another selectable item because there are 2 of them.
-    hemisphere:
-        - LH
-        - RH
-    # Cortex, which has a string, is again a lazy value defined by a code
-    # snippet. This snippet extracts the Cortex object for the selected
-    # hemisphere.
-    cortex: |
-        h = target['hemisphere'].
-        return target['nysubject'].hemis[h]
-    # Additionally, we create a flatmap projection for the hemisphere. Here we
-    # make a projection of the occipital cortex.
-    flatmap: |
-        # Start by importing neuropythy.
-        # Make a flatmap projection of the occipital cortex.
-        return ny.to_flatmap('occipital_pole', target['cortex'])
-    # Finally, it's useful to have information about the image coordinates in
-    # the target data, so we add these.
-    xlim: |
-        x = target['flatmap'].coordinates[0]
-        return (np.min(x), np.max(x))
-    ylim: |
-        y = target['flatmap'].coordinates[1]
-        return (np.min(y), np.max(y))
+  # The NSD contains 8 subjects, listed below. The 'Subject ID' entry will be
+  # a dropdown menu in the annotation tool because it is a list of multiple
+  # choices rather than a code-block or a list with a single entry.
+  Subject ID:
+    - subj01
+    - subj02
+    - subj03
+    - subj04
+    - subj05
+    - subj06
+    - subj07
+    - subj08
+  # The 'subject' entry is a multi-line string, so it is interpreted as a Python
+  # code snippet. This snippet is compiled into a function whose parameter list
+  # contains only the variable `target`. The `target` will be a dictionary with
+  # the target data above the subject, so in this case only the 'Subject ID'.
+  subject: |
+    # Get the subject ID that the user chose from the above selection list.
+    sid = target['Subject ID']
+    # Find a sub-path for the subject's FreeSurfer directory; we get the
+    # nsd_path variable from the `init` section of the config.yaml file; see
+    # above.
+    fs_path = nsd_path.subpath('freesurfer', sid)
+    # Load and return a FreeSurfer subject object for this path.
+    return ny.freesurfer_subject(fs_path)
+  # The 'Hemisphere' is a choice for the user; as a list of two options, it will
+  # appear as a dropdown meny with these two options in the annotation tool.
+  Hemisphere:
+    - LH
+    - RH
+  # We will want to include the Wang et al. (2015) probabilistic visual area
+  # atlas as an optional annotation that users can turn on and off (see the
+  # `builtin_annotations` section, below). This element of the target section
+  # loads the Wang atlas and applies it to the subject we are workign with.
+  wang15: |
+    import neuropythy.commands as nycmd, os
+    # Grab the subject object that was loaded in the 'subject' section.
+    sub = target['subject']
+    # We also need to know the hemisphere name.
+    h = target['Hemisphere'].lower()
+    # Get the subject's cache-path; this is tracked by neuropythy.
+    subpath = sub.pseudo_path.cache_path
+    # Possibly, this atlas has already been applied to this subject; if so, we
+    # don't need to (re-)run neuropythy's atlas command (which applies the atlas
+    # to the subject and saves it as a file).
+    wangpath = os.path.join(subpath, 'surf', f'{h}.wang15_mplbl.mgz')
+    if not os.path.isfile(wangpath):
+        # Make sure the fsaverage-alignment has already been loaded into cache;
+        # because the atlas command operates on the filesystem while the subject
+        # and cache path load things lazily, we need to make sure these have
+        # already been downloaded before we run the command.
+        sub.hemis['lh'].surface('fsaverage')
+        sub.hemis['rh'].surface('fsaverage')
+        # Now run the atlas command.
+        nycmd.atlas.main(["-awang15", "-fmgz", subpath])
+    # Load and return the file.
+    return ny.load(wangpath)
+  # The 'cortex' key in the target data is for the cortical surface object,
+  # which is managed and loaded by neuropythy from the subject's FreeSurfer
+  # object. Note that the 'cortex' entry is like the 'subject' entry in that it
+  # is compiled into a function whose only parameter is a dict object called
+  # `target`, but because it is farther down in the target section, the `target`
+  # parameter will contain entries for 'Subject ID', 'subject', and 'Hemisphere'
+  # from the sections above.
+  cortex: |
+    # Extract the subject object and the hsmisphere name.
+    sub = target['subject']
+    h = target['Hemisphere'].lower()
+    # Load retinotopic mapping data from the label directory, where these data
+    # are stored on the NSD repository.
+    label_path = nsd_path.subpath('freesurfer', sid, 'label')
+    props = {
+        k: ny.load(label_path.subpath(f'{h}.{filename}'))
+        for (k,filename) in nsd_prf_files.items()}
+    # Convert the polar angle into Neuropythy's "visual" format (i.e., 0 degrees
+    # is the upper vertical meridian, 90 degrees is the right horizontal
+    # meridian, and -90 degrees is the left horizontal meridian.
+    ang = props['polar_angle']
+    props['polar_angle'] = np.mod(90 - ang + 180, 360) - 180
+    # Add the Wang et al. (2015) atlas, loaded in the above 'wang15' section.
+    props['wang15'] = target['wang15']
+    # Grab the appropriate coretx/hemisphere object.
+    cortex = sub.hemis[h]
+    # Finally, return that hemisphere object with the properties associated with
+    # it (this is Neuropythy's typical modus operandi for adding properties to
+    # existing objects: make a copy with the properties attached).
+    return cortex.with_prop(props)
+  # Finally, we include a 'flatmap' entry of the `targets` section in order to
+  # create a flattened projection of the hemisphere for annotation. We use the
+  # `mask_flatmap` method of the cortex/hemisphere object in order to create a
+  # projection of the inflated native surface that is centered on the occipital
+  # pole. This uses the `occpole_mask` defined in the `init` section above.
+  flatmap: |
+    cortex = target['cortex']
+    return cortex.mask_flatmap(occpole_mask, map_right='right', radius=np.pi/2)
 ```
 
 
