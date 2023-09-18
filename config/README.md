@@ -1,12 +1,13 @@
 # Configuration Directory for the Docker Container
 
-This directory is a placeholder for configuration information for the
-cortex-annotate project. When running the cortex-annotate docker container, this
-directory is automatically mapped to the directory `/config` inside of the
-running docker container. In order to create an annotation project, you should
-only need to edit files in this directory, primarily the `config.yaml`
-file. (Additionally, you may need to put additional Python code in the `/src`
-directory; see the `/src/README.md` file.)
+This directory contains the configuration information for the `cortex-annotate`
+toolkit. The actual annotation tool built into `cortex-annotate` runs in a
+Docker container, and when it is running this directory is automatically mapped
+to the directory `/config` inside of the running docker container. In order to
+create an annotation project, you should only need to edit files in this
+directory, primarily the `config.yaml` file. (Additionally, you may need to put
+some Python code in the `/src` directory; see the `/src/README.md` file for more
+information.)
 
 
 ## Directory Contents ##########################################################
@@ -42,7 +43,7 @@ import.
 
 The `config.yaml` file is a basic configuration file for the `cortex-annotate`
 tool. It must parse into a mapping (`dict`) at the top level. This section
-describes the format of the configuration file and provides examples.
+describes the format of the configuration file and provides example `yaml` code.
 
 
 ### General Principles
@@ -138,7 +139,7 @@ but this is not enforced. A dataset could, for example, define individual
 targets to be different ROIs or different views of a hemisphere. The annotations
 (contours or boundaries) that are to be placed on a target are defined in the
 `annotations` section while the images that are displayed when a target is
-selected, onto which the annotations are drawn, are defined in the `images`
+selected, onto which the annotations are drawn, are defined in the `figures`
 section.
 
 The contents of the `targets` section should be a mapping itself. Each key of
@@ -153,7 +154,7 @@ single string (which may be a multi-line string but not a list of strings), then
 it is treated as a Python code snipped. Such a snippet is compiled into a
 function with a single parameter `target` which is always a Python `dict`
 containing all the target data above it in the `targets` section. For example,
-the following `targets` section first defines a `Subject ID`, which becomes a
+the following `targets` section first defines a `Subject Name`, which becomes a
 dropdown menu in the annotation tool from which the user selects a subject; the
 target key after the `Subject Name` is the `subject_id` key, and because it maps
 to a multi-line string instead of a list, it is treated as a code-snippet that
@@ -183,12 +184,11 @@ the user (for keys that map to lists, such as `Subject Name` in the example
 above) or to the return value of the key's code snippet (for keys that map to
 strings, such as `subject_id` in the example above). In Python code snippets
 that appear in other sections in this file, the target data is also provided as
-a local variable `target` containing `dict`-like object of all the target keys
+a local variable `target` containing a `dict`-like object of all the target keys
 mapped to their selected or calculated values. If a key in the `targets` section
 is mapped to a list with only one element, then that element is not included in
 the selection panel of the annotation tool, but it is included in the `target`
 dict of code snippets.
-
 
 **Example**: the following `yaml` block demonstrates how target data can be
 prepared for the Natural Scene Dataset (NSD). The entire `config.yaml` file for
@@ -224,7 +224,7 @@ targets:
     # Load and return a FreeSurfer subject object for this path.
     return ny.freesurfer_subject(fs_path)
   # The 'Hemisphere' is a choice for the user; as a list of two options, it will
-  # appear as a dropdown meny with these two options in the annotation tool.
+  # appear as a dropdown menu with these two options in the annotation tool.
   Hemisphere:
     - LH
     - RH
@@ -238,45 +238,31 @@ targets:
     sub = target['subject']
     # We also need to know the hemisphere name.
     h = target['Hemisphere'].lower()
-    # Get the subject's cache-path; this is tracked by neuropythy.
-    subpath = sub.pseudo_path.cache_path
-    # Possibly, this atlas has already been applied to this subject; if so, we
-    # don't need to (re-)run neuropythy's atlas command (which applies the atlas
-    # to the subject and saves it as a file).
-    wangpath = os.path.join(subpath, 'surf', f'{h}.wang15_mplbl.mgz')
-    if not os.path.isfile(wangpath):
-        # Make sure the fsaverage-alignment has already been loaded into cache;
-        # because the atlas command operates on the filesystem while the subject
-        # and cache path load things lazily, we need to make sure these have
-        # already been downloaded before we run the command.
-        sub.hemis['lh'].surface('fsaverage')
-        sub.hemis['rh'].surface('fsaverage')
-        # Now run the atlas command.
-        nycmd.atlas.main(["-awang15", "-fmgz", subpath])
-    # Load and return the file.
-    return ny.load(wangpath)
+    # The NSD includes the wang15 atlas in the FreeSurfer directory's label
+    # subdirectory (the file uses the name Kastner2015).
+    return sub.load('label', h + '.Kastner2015.mgz')
   # The 'cortex' key in the target data is for the cortical surface object,
   # which is managed and loaded by neuropythy from the subject's FreeSurfer
   # object. Note that the 'cortex' entry is like the 'subject' entry in that it
   # is compiled into a function whose only parameter is a dict object called
   # `target`, but because it is farther down in the target section, the `target`
-  # parameter will contain entries for 'Subject ID', 'subject', and 'Hemisphere'
-  # from the sections above.
+  # parameter will contain entries for 'Subject ID', 'subject', 'Hemisphere',
+  # and 'wang15' from the sections above.
   cortex: |
     # Extract the subject object and the hsmisphere name.
     sub = target['subject']
     h = target['Hemisphere'].lower()
     # Load retinotopic mapping data from the label directory, where these data
-    # are stored on the NSD repository.
-    label_path = nsd_path.subpath('freesurfer', sid, 'label')
+    # are stored on the NSD repository. We get the pRF filenames from the
+    # nsd_prf_files dictionary that is defined in the init section (see above).
     props = {
-        k: ny.load(label_path.subpath(f'{h}.{filename}'))
+        k: sub.load('label', f'{h}.{filename}')
         for (k,filename) in nsd_prf_files.items()}
     # Convert the polar angle into Neuropythy's "visual" format (i.e., 0 degrees
     # is the upper vertical meridian, 90 degrees is the right horizontal
     # meridian, and -90 degrees is the left horizontal meridian.
     ang = props['polar_angle']
-    props['polar_angle'] = np.mod(90 - ang + 180, 360) - 180
+    props['polar_angle'] = np.mod((90 - ang) + 180, 360) - 180
     # Add the Wang et al. (2015) atlas, loaded in the above 'wang15' section.
     props['wang15'] = target['wang15']
     # Grab the appropriate coretx/hemisphere object.
@@ -310,19 +296,21 @@ Both of the `contours` or `boundaries` subsections must contain mappings, and
 the keys are the names of the contours or boundaries that are to be drawn on
 each target (i.e., the names of the annotations). Each of these annotations'
 sections must either be a list or a mapping as well. If the section is a list,
-then it is equivalent to a mapping whose only key is `grid` and whose other keys
-take the default value. Otherwise, a given annotation section must be a mapping
-whose keys may include `grid`, `filter`, `plot_options`, and `fg_options`:
+then it is equivalent to a mapping whose only key is `grid` (whose value is the
+given list) and whose other keys take the default values. Otherwise, a given
+annotation section must be a mapping whose keys may include `grid`, `filter`,
+`plot_options`, and `fg_options`:
 * **`grid`** is the grid of figures that is to be displayed while annotating. If
   a single list (as opposed to a matrix) is provided, then it is assumed to be a
-  row. Elements of the `grid` must either be figure names or `null`.
+  row. Elements of the `grid` must either be figure names, as defined in the
+  `figures` section (see below) or `null`.
 * **`filter`** is a code-snippet that must return either `True` or `False`
   depending on whether the annotation is enabled for the given `target`. By
-  default, this is equivalent to `return True`.
+  default, this is equivalent to the string `return True`.
 * **`plot_options`** is a mapping of display options for the annotation when it
-  is not the selected annotation. The keys in this section may be any viable
-  optional argument for the `matplotlib.pyplot.plot` function. See also the
-  root-scope `plot_options` section, below.
+  is not the currently selected annotation. The keys in this section may be any
+  viable optional argument for the `matplotlib.pyplot.plot` function. See also
+  the root-scope `plot_options` section, below.
 * **`fg_options`** is a mapping of display options, like `plot_options` that
   specifies the display options for the annotation when it is the selected
   annotation. Any key that does not appear here defaults to its value in either
@@ -333,7 +321,8 @@ whose keys may include `grid`, `filter`, `plot_options`, and `fg_options`:
   the `fg_options` is equivalent to having a `linewidth` of 2, a `markersize` of
   3, and a color of `[1, 0.5, 0.5]`.
 
-Example:
+**Example**. The following `yaml` block demonstrates how one would instruct the
+annotation tool to collect a series of annotations for the early visual cortex.
 
 ```yaml
 # When annotating V1-V3 using retinotopic maps; we need contours for the
@@ -341,7 +330,7 @@ Example:
 # all simple contours (not boundaries).
 annotations:
     # The grids of images we want to show when annotating each contour 
-    # (see images section below).
+    # (see figures section below).
     contours:
         periphery:
             - ["polar_angle", "eccentricity"]
