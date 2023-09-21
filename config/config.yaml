@@ -1,3 +1,10 @@
+################################################################################
+# This file contains the configuration for the cortex-annotate toolkit. By
+# editing this file, one can configure cortex-annotate to work with various
+# datasets and to enable annotation of specific contours, points, and
+# boundaries. The current contents of this file configure the tool for
+# annotation of the visual cortex of subjects in the NYU retinotopy dataset.
+
 
 display:
   figsize: [4, 4]
@@ -29,7 +36,8 @@ init: |
   nsd_prf_files = {
       "polar_angle": "prfangle.mgz",
       "eccentricity": "prfeccentricity.mgz",
-      "cod": "prfR2.mgz"}
+      "cod": "prfR2.mgz",
+      "wang15": "Kastner2015.mgz"}
   # This occipital pole mask is used with neuropythy's flatmap code; the tuple
   # indicates that the FreeSurfer parcellation property uses the value 43 to
   # indicate the occipital pole of the brain.
@@ -108,7 +116,7 @@ targets:
     h = target['Hemisphere'].lower()
     # Load retinotopic mapping data from the label directory, where these data
     # are stored on the NSD repository.
-    label_path = nsd_path.subpath('freesurfer', sid, 'label')
+    label_path = nsd_path.subpath('freesurfer', sub, 'label')
     props = {
         k: ny.load(label_path.subpath(f'{h}.{filename}'))
         for (k,filename) in nsd_prf_files.items()}
@@ -135,42 +143,114 @@ targets:
     return cortex.mask_flatmap(occpole_mask, map_right='right', radius=np.pi/2)
 
 annotations:
-  Periphery:
-    - ["polar_angle", "eccentricity"]
-    - ["curvature", "cod"]
+  # V1 contours:
   V1 Foveal Point:
     type: point
     grid:
       - ["polar_angle", "eccentricity"]
       - ["curvature", "cod"]
-  V1 UVM:
+  V1 UVM (ventral):
     fixed_head: V1 Foveal Point
     grid:
       - ["polar_angle", "eccentricity"]
       - ["curvature", "cod"]
-  V1 LVM:
+  V1 LVM (dorsal):
     fixed_head: V1 Foveal Point
     grid:
       - ["polar_angle", "eccentricity"]
       - ["curvature", "cod"]
   V1 Periphery:
     fixed_head:
-      requires: V1 UVM
+      requires: V1 UVM (ventral)
       calculate: |
-        return annotations['V1 UVM'][-1,:]
+        return annotations['V1 UVM (ventral)'][-1,:]
     fixed_tail:
-      requires: V1 LVM
+      requires: V1 LVM (dorsal)
       calculate: |
-        return annotations['V1 LVM'][-1,:]
+        return annotations['V1 LVM (dorsal)'][-1,:]
     grid:
       - ["polar_angle", "eccentricity"]
       - ["curvature", "cod"]
-  V2 Boundary:
-    - ["polar_angle", "eccentricity"]
-    - ["curvature", "cod"]
-  V3 Boundary:
-    - ["polar_angle", "eccentricity"]
-    - ["curvature", "cod"]
+  # V2 contours:
+  V2 Foveal Point:
+    type: point
+    grid:
+      - ["polar_angle", "eccentricity"]
+      - ["curvature", "cod"]
+  V2 UVM (ventral):
+    fixed_head: V2 Foveal Point
+    grid:
+      - ["polar_angle", "eccentricity"]
+      - ["curvature", "cod"]
+  V2 LVM (dorsal):
+    fixed_head: V2 Foveal Point
+    grid:
+      - ["polar_angle", "eccentricity"]
+      - ["curvature", "cod"]
+  V2 Ventral Periphery:
+    fixed_head:
+      requires: V2 UVM (ventral)
+      calculate: |
+        return annotations['V2 UVM (ventral)'][-1,:]
+    fixed_tail:
+      requires: V1 UVM (ventral)
+      calculate: |
+        return annotations['V1 UVM (ventral)'][-1,:]
+    grid:
+      - ["polar_angle", "eccentricity"]
+      - ["curvature", "cod"]
+  V2 Dorsal Periphery:
+    fixed_head:
+      requires: V2 LVM (dorsal)
+      calculate: |
+        return annotations['V2 LVM (dorsal)'][-1,:]
+    fixed_tail:
+      requires: V1 LVM (dorsal)
+      calculate: |
+        return annotations['V1 LVM (dorsal)'][-1,:]
+    grid:
+      - ["polar_angle", "eccentricity"]
+      - ["curvature", "cod"]
+  # V3 contours:
+  V3 Foveal Point:
+    type: point
+    grid:
+      - ["polar_angle", "eccentricity"]
+      - ["curvature", "cod"]
+  V3 UVM (ventral):
+    fixed_head: V3 Foveal Point
+    grid:
+      - ["polar_angle", "eccentricity"]
+      - ["curvature", "cod"]
+  V3 LVM (dorsal):
+    fixed_head: V3 Foveal Point
+    grid:
+      - ["polar_angle", "eccentricity"]
+      - ["curvature", "cod"]
+  V3 Ventral Periphery:
+    fixed_head:
+      requires: V3 UVM (ventral)
+      calculate: |
+        return annotations['V3 UVM (ventral)'][-1,:]
+    fixed_tail:
+      requires: V2 UVM (ventral)
+      calculate: |
+        return annotations['V2 UVM (ventral)'][-1,:]
+    grid:
+      - ["polar_angle", "eccentricity"]
+      - ["curvature", "cod"]
+  V3 Dorsal Periphery:
+    fixed_head:
+      requires: V3 LVM (dorsal)
+      calculate: |
+        return annotations['V3 LVM (dorsal)'][-1,:]
+    fixed_tail:
+      requires: V2 LVM (dorsal)
+      calculate: |
+        return annotations['V2 LVM (dorsal)'][-1,:]
+    grid:
+      - ["polar_angle", "eccentricity"]
+      - ["curvature", "cod"]
 
 builtin_annotations:
   Wang2015 Atlas:
@@ -180,20 +260,12 @@ builtin_annotations:
       markersize: 1
       visible: false
     data: |
-      sub = target['subject']
-      h = target['Hemisphere'].lower()
-      path = os.path.join(sub.pseudo_path.cache_path, 'surf',
-                          f'{h}.wang15_points.mgz')
-      if not os.path.isfile(path):
-        fmap = target['flatmap']
-        (u,v) = fmap.tess.indexed_edges
-        w = target['wang15'][fmap.labels]
-        xy = fmap.coordinates
-        ii = w[u] != w[v]
-        dat = np.mean([xy[:,u[ii]], xy[:,v[ii]]], axis=0)
-        ny.save(path, dat)
-      else:
-        dat = ny.load(path)
+      fmap = target['flatmap']
+      (u,v) = fmap.tess.indexed_edges
+      w = fmap.prop('wang15')
+      xy = fmap.coordinates
+      ii = w[u] != w[v]
+      dat = np.mean([xy[:,u[ii]], xy[:,v[ii]]], axis=0)
       return [dat.T]
 
 figures:
@@ -212,6 +284,3 @@ figures:
                    cmap='hot', vmin=0, vmax=100)
   curvature: |
     ny.cortex_plot(target['flatmap'], axes=axes)
-
-    
-    

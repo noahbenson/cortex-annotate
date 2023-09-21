@@ -15,15 +15,15 @@ information.)
 * **`build_root.sh`**: This file is a BASH script for any commands that should
   be run when the docker image when the annotate tool is built. The commands in
   this file are run by the root user inside the docker-image after all other
-  parts of the build process except for the `build_user.sh` script, also in this
-  directory. When possible, it is recommended that one use the user version of
-  this script instead of the root version.
+  parts of the build process except for the `build_user.sh` script, which is
+  also in this directory. When possible, it is recommended that one use the user
+  version of this script instead of the root version.
 * **`build_user.sh`**: This file is a BASH script that is run when the docker
   image for the annotate tool is built. The commands in this file are run by the
   `$NB_USER` user inside the docker-image after all other parts of the build
-  process including the `build_root.sh` script, also in this directory. The
-  `$NB_USER` user is the default user inside the docker-image and isn't
-  generally important.
+  process including the `build_root.sh` script, which is also in this
+  directory. The `$NB_USER` user is the default user inside the docker-image and
+  isn't generally important.
 * **`config.yaml`**: This is the primary configuration file for the annotation
   tool. This is the primary file that must be edited in order to have a viable
   `cortex-annotate` project. The format specification of this file is detailed
@@ -249,7 +249,7 @@ targets:
   # parameter will contain entries for 'Subject ID', 'subject', 'Hemisphere',
   # and 'wang15' from the sections above.
   cortex: |
-    # Extract the subject object and the hsmisphere name.
+    # Extract the subject object and the hemisphere name.
     sub = target['subject']
     h = target['Hemisphere'].lower()
     # Load retinotopic mapping data from the label directory, where these data
