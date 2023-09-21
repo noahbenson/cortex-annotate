@@ -77,9 +77,14 @@ RUN curl -L -o /data/required_subjects/fsaverage_sym.tar.gz \
 # won't usually have to rebuild these dependencies.
 USER $NB_USER
 # Install some stuff we are likely to need, including neuropythy.
+
+# The following line that installs jupyter_contrib_nbextensions is a
+# bug workaround; it should be replaced by just this line once the
+# bug is fixed:
+#  && conda install -y -cconda-forge ipywidgets pip jupyter_contrib_nbextensions
 RUN conda update -y -n base conda \
  && conda install -y nibabel s3fs \
- && conda install -y -cconda-forge ipywidgets pip jupyter_contrib_nbextensions \
+ && conda install -y -cconda-forge ipywidgets pip 'jupyter_contrib_nbextensions < 0.7' 'traitlets = 5.9.0' \
  && pip install --upgrade setuptools \
  && pip install ipycanvas pyyaml neuropythy
 # Install collapsible cell extensions...
