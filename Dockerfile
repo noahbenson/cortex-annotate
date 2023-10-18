@@ -95,6 +95,8 @@ RUN mkdir -p /home/$NB_USER/.jupyter/custom
 # Copy the config directory's requirements over and install them.
 COPY config/requirements.txt /build/
 RUN pip install -r /build/requirements.txt
+# For some reason, tornado is causing major problems, so we downgrade to 6.1 here:
+RUN pip install 'tornado < 6.1'
 
 
 # Copy User Files ##############################################################
