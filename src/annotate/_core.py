@@ -67,7 +67,7 @@ class AnnotationState:
             repo_user = s1 if len(s1) < len(s2) else s2
             return (repo_user, repo_name)
         except Exception as e:
-            from warning import warn
+            from warnings import warn
             warn(f"error finding gitdata: {e}")
             return ('', '')
     def target_path(self, target):
