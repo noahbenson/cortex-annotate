@@ -316,6 +316,58 @@ figures:
     cod: |
         ny.cortex_plot(target['flatmap'], color='cod', axes=axes, cmap='hot',
                        vmin=0, vmax=1)
+    # We also want to have thresholded versions of these plots.
+    polar_angle_thresh: |
+        ny.cortex_plot(target['flatmap'], color='polar_angle', axes=axes,
+                       mash=('cod', 0.1, 1), cmap='hot', vmin=0, vmax=1)
+    eccentricity_thresh: |
+        ny.cortex_plot(target['flatmap'], color='eccentricity', axes=axes,
+                       mash=('cod', 0.1, 1), cmap='hot', vmin=0, vmax=1)
     # The rest are PRF properties.
     _: |
         ny.cortex_plot(target['flatmap'], color=key, axes=axes)
+
+review: |
+  #from annotate import watershed_contours
+  #im = watershed_contours(annotations.values(), max_depth=1)
+  #axes.imshow(im, cmap='hsv', vmin=0, vmax=1.5*np.max(im))
+  import numpy as np
+  from matplotlib.pyplot import Polygon
+  # V1:
+  v1uvm = annotations['V1 UVM (ventral)']
+  v1lvm = annotations['V1 LVM (dorsal)']
+  v1per = annotations['V1 Periphery']
+  v1pol = Polygon(
+      np.vstack([v1uvm, v1per, np.flipud(v1lvm)]),
+      closed=True,
+      color='red',
+      alpha=0.5,
+      fill=True)
+  axes.add_patch(v1pol)
+  # V2:
+  v2uvm = annotations['V2 UVM (ventral)']
+  v2lvm = annotations['V2 LVM (dorsal)']
+  v2pev = annotations['V2 Ventral Periphery']
+  v2ped = annotations['V2 Dorsal Periphery']
+  v2pol = Polygon(
+      np.vstack(
+          [v2uvm, v2pev, np.flipud(v1uvm), v1lvm, v2ped, np.flipud(v2lvm)]),
+      closed=True,
+      color='cyan',
+      alpha=0.5,
+      fill=True)
+  axes.add_patch(v2pol)
+  # V3:
+  v3uvm = annotations['V3 UVM (ventral)']
+  v3lvm = annotations['V3 LVM (dorsal)']
+  v3pev = annotations['V3 Ventral Periphery']
+  v3ped = annotations['V3 Dorsal Periphery']
+  v3pol = Polygon(
+      np.vstack(
+          [v3uvm, v3pev, np.flipud(v2uvm), v2lvm, v3ped, np.flipud(v3lvm)]),
+      color='black',
+      alpha=0.5,
+      closed=True)
+  axes.add_patch(v3pol)
+  axes.axis('equal')
+  axes.axis('off')
