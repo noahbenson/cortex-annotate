@@ -15,6 +15,7 @@ FigurePanel widget in the _figure.py file.
 import os
 import json
 from functools import partial
+from io import BytesIO
 
 import numpy as np
 import pandas as pd
@@ -67,7 +68,7 @@ class AnnotationState:
             repo_user = s1 if len(s1) < len(s2) else s2
             return (repo_user, repo_name)
         except Exception as e:
-            from warning import warn
+            from warnings import warn
             warn(f"error finding gitdata: {e}")
             return ('', '')
     def target_path(self, target):
@@ -205,6 +206,27 @@ class AnnotationState:
             meta_data = json.load(f)
         # And return them.
         return (image_data, grid_shape, meta_data)
+    def generate_review(self, target_id):
+        """Generates a single figure for the given target and figure name."""
+        target = self.config.targets[target_id]
+        annots = self.annotations[target_id]
+        fn = self.config.review.function
+        if fn is None:
+            raise RuntimeError("no review function found")
+        # Make a figure and axes for the plots.
+        figsize = self.config.review.figsize
+        dpi = self.config.review.dpi
+        (fig,ax) = plt.subplots(1,1, figsize=figsize, dpi=dpi)
+        # Run the function from the config that draws the figure.
+        fn(target, annots, fig, ax)
+        # Tidy things up for image plotting.
+        ax.axis('off')
+        fig.subplots_adjust(0,0,1,1,0,0)
+        b = BytesIO()
+        plt.savefig(b, format='png')
+        # We can close the figure now as well.
+        plt.close(fig)
+        return ipw.Image(value=b.getvalue(), format='png')
     def load_preferences(self):
         """Loads the preferences from the save directory and returns them.
 
@@ -553,41 +575,60 @@ class AnnotationTool(ipw.HBox):
         targ = self.control_panel.target
         annot = self.control_panel.annotation
         targ_annots = self.state.annotations[targ]
-        # Figure out the fixed heads and tails
-        annot_data = self.state.config.annotations[annot]
-        (fs, reqs) = ([], [])
-        for fixed in [annot_data.fixed_head, annot_data.fixed_tail]:
-            if fixed is not None:
-                reqs += fixed['requires']
-            fs.append(fixed)
-        missing = []
-        found = {}
-        for r in reqs:
-            xy = targ_annots.get(r, ())
-            if len(xy) == 0:
-                missing.append(r)
-            else:
-                found[r] = xy
-        if len(missing) == 0:
-            target = self.state.config.targets[targ]
-            try:
-                fs = [(None if f is None else f['calculate'](target, found))
-                      for f in fs]
-                error = None
-            except Exception as e:
-                error = f"Error generating fixed points:\n  {e}"
-                fs = None
-        else:
+        # First of all, if there is any nonempty annotation that requires the
+        # current annotation, we need to print an error about it.
+        deps = []
+        for (annot_name, annot_data) in self.state.config.annotations.items():
+            # If the annotation is empty, it doesn't matter if it a dependant.
+            xy = targ_annots.get(annot_name)
+            if xy is None or len(xy) == 0:
+                continue
+            for fixed in (annot_data.fixed_head, annot_data.fixed_tail):
+                if fixed is not None and annot in fixed['requires']:
+                    deps.append(annot_name)
+                    break
+        if len(deps) > 0:
             fs = None
-            annlist = ", ".join(missing)
-            error = f"The following annotations are required:\n  {annlist}"
-        (fh,ft) = (None,None) if fs is None else fs
+            annlist = ", ".join(deps)
+            error = f"The following annotations are dependant:\n  {annlist}"
+            fh = None
+            ft = None
+        else:
+            # Figure out the fixed heads and tails
+            annot_data = self.state.config.annotations[annot]
+            (fs, reqs) = ([], [])
+            for fixed in [annot_data.fixed_head, annot_data.fixed_tail]:
+                if fixed is not None:
+                    reqs += fixed['requires']
+                fs.append(fixed)
+            missing = []
+            found = {}
+            for r in reqs:
+                xy = targ_annots.get(r, ())
+                if len(xy) == 0:
+                    missing.append(r)
+                else:
+                    found[r] = xy
+            if len(missing) == 0:
+                target = self.state.config.targets[targ]
+                try:
+                    fs = [(None if f is None else f['calculate'](target, found))
+                          for f in fs]
+                    error = None
+                except Exception as e:
+                    error = f"Error generating fixed points:\n  {e}"
+                    fs = None
+            else:
+                fs = None
+                annlist = ", ".join(missing)
+                error = f"The following annotations are required:\n  {annlist}"
+            (fh,ft) = (None,None) if fs is None else fs
         self.figure_panel.change_annotations(
             targ_annots,
             self.state.builtin_annotations[targ],
             redraw=False,
             annotation_types=self.state.config.annotation_types,
-            allow=(len(missing) == 0 and fs is not None),
+            allow=(fs is not None),
             fixed_heads={annot: fh},
             fixed_tails={annot: ft})
         self.figure_panel.change_foreground(annot, redraw=False)
@@ -618,10 +659,45 @@ class AnnotationTool(ipw.HBox):
         self.state.style(annotation, key, change.new)
         # Then redraw the annotation.
         self.figure_panel.redraw_canvas(redraw_image=False)
+    def on_review(self, button):
+        "This method runs when the control panel's review button is clicked."
+        self.figure_panel.clear_message()
+        self.state.save_preferences()
+        # This will happen no matter what:
+        self.control_panel.review_button.disabled = True
+        self.control_panel.edit_button.disabled = False
+        # Get the review function.
+        rev = self.state.config.review.function
+        if rev is None:
+            self.control_panel.save_button.disabled = True
+        else:
+            with self.state.loading_context:
+                try:
+                    targ = self.control_panel.target
+                    msg = self.state.generate_review(targ)
+                    self.control_panel.save_button.disabled = False
+                except Exception as e:
+                    msg = str(e)
+                    self.control_panel.save_button.disabled = True
+            self.figure_panel.review_start(msg)
     def on_save(self, button):
         "This method runs when the control panel's save button is clicked."
+        if self.figure_panel.review_msg is not None:
+            self.control_panel.review_button.disabled = False
+            self.control_panel.save_button.disabled = True
+            self.control_panel.edit_button.disabled = True
+            self.figure_panel.review_end()
+            self.refresh_figure()
         self.state.save_annotations()
         self.state.save_preferences()
+    def on_edit(self, button):
+        "This method runs when the control panel's edit button is clicked."
+        if self.figure_panel.review_msg is not None:
+            self.control_panel.review_button.disabled = False
+            self.control_panel.save_button.disabled = True
+            self.control_panel.edit_button.disabled = True
+            self.figure_panel.review_end()
+            self.refresh_figure()
     def __init__(self,
                  config_path='/config/config.yaml',
                  cache_path='/cache',
@@ -664,7 +740,10 @@ class AnnotationTool(ipw.HBox):
         self.control_panel.observe_selection(self.on_selection_change)
         # And a listener for the style change.
         self.control_panel.observe_style(self.on_style_change)
-        # And a listener for the save button.
+        # And a listener for the review, save, and edit buttons.
         self.control_panel.observe_save(self.on_save)
+        if self.state.config.review.function is not None:
+            self.control_panel.observe_review(self.on_review)
+            self.control_panel.observe_edit(self.on_edit)
         # Finally initialize the outer HBox component.
 

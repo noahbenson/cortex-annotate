@@ -511,6 +511,50 @@ class FiguresConfig(dict):
                                                       init)
         # Same these into the dictionary.
         self.update(res)
+class ReviewConfig:
+    """An object that stores the configuration of the review panel.
+
+    The `ReviewConfig` type stores information from the `review` section of the
+    `config.yaml` file for the `cortex-annotate` project. This section stores
+    only a function that generates the figure to plot in the `Review` tab of the
+    display panel. The review function requires the arguments `target`,
+    `annotations`, `figure`, and `axes`, and it must draw the desired graphics
+    on the given matplotlib axes. The `annotations` argument is a dictionary
+    whose keys are the annotation names and whose values are the drawn
+    annotation. Annotations may be missing if the user opens the review tab
+    before completing the annotations. If an error is raised from this function,
+    then the error message is printed to the display.
+    """
+    __slots__ = ('code', 'function', 'figsize', 'dpi')
+    @staticmethod
+    def _compile(code, initcfg):
+        return _compile_fn(
+            "target, annotations, figure, axes",
+            f"{code}\n",
+            initcfg)
+    def __init__(self, yaml, init):
+        if yaml is None:
+            self.code = None
+            self.function = None
+            self.figsize = None
+            self.dpi = None
+            return
+        elif isinstance(yaml, str):
+            yaml = {'function': yaml}
+        elif not isinstance(yaml, dict):
+            raise ConfigError(
+                "review",
+                "review section must contain a Python code string or a dict",
+                yaml)
+        self.code = yaml.get('function')
+        if self.code is None:
+            raise ConfigError(
+                "review",
+                "review section must contain the key function",
+                yaml)
+        self.figsize = yaml.get('figsize', (3,3))
+        self.dpi = yaml.get('dpi', 256)
+        self.function = ReviewConfig._compile(self.code, init)
 class Config:
     """The configuration object for the `cortex-annotate` project.
 
@@ -521,8 +565,9 @@ class Config:
     not recognized by `Config` are not parsed, but they are available in the
     `Config.yaml` member variable.
     """
-    __slots__ = ('config_path', 'yaml', 'display', 'init', 'targets', 'figures',
-                 'annotations', 'builtin_annotations', 'annotation_types')
+    __slots__ = (
+        'config_path', 'yaml', 'display', 'init', 'targets', 'figures',
+        'annotations', 'builtin_annotations', 'review', 'annotation_types')
     def __init__(self, config_path='/config/config.yaml'):
         self.config_path = config_path
         with open(config_path, 'rt') as f:
@@ -534,15 +579,20 @@ class Config:
         # Parse the targets section.
         self.targets = TargetsConfig(self.yaml.get('targets', None), self.init)
         # Parse the annotations section.
-        self.annotations = AnnotationsConfig(self.yaml.get('annotations', None),
-                                             self.init)
+        self.annotations = AnnotationsConfig(
+            self.yaml.get('annotations', None),
+            self.init)
         # Parse the builtin_annotations section.
         self.builtin_annotations = BuiltinAnnotationsConfig(
             self.yaml.get('builtin_annotations', None),
             self.init)
         # Parse the figures section.
-        self.figures = FiguresConfig(self.yaml.get('figures', None), self.init,
-                                     self.annotations.all_figures)
+        self.figures = FiguresConfig(
+            self.yaml.get('figures', None),
+            self.init,
+            self.annotations.all_figures)
+        # Parse the review section.
+        self.review = ReviewConfig(self.yaml.get('review', None), self.init)
         # Make the annotation types dictionary.
         d = self.annotations.types.copy()
         d.update(self.builtin_annotations.types)
