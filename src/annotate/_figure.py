@@ -114,6 +114,7 @@ class FigurePanel(ipw.HBox):
         self.fixed_tails = None
         self.annotation_types = {}
         self.ignore_input = False
+        self.reviewing = False
         # Initialize our parent class.
         super().__init__([html, self.multicanvas])
     @classmethod
@@ -196,9 +197,16 @@ class FigurePanel(ipw.HBox):
                    (ylim[1] - ylim[0]) / imheight]
         points += [xlim[0], ylim[0]]
         return points
+    def review_start(self, msg):
+        self.review_msg = msg
+        self.redraw_canvas(redraw_review=True)
+    def review_end(self):
+        self.review_msg = None
+        self.redraw_canvas()
     def redraw_canvas(self,
                       image=Ellipsis, grid_shape=None, xlim=None, ylim=None,
-                      redraw_image=True, redraw_annotations=True):
+                      redraw_image=True, redraw_annotations=True,
+                      redraw_review=False):
         """Redraws the entire canvas.
 
         `figure_panel.redraw_canvas()` redraws the canvas as-is.
@@ -232,15 +240,15 @@ class FigurePanel(ipw.HBox):
             self.resize_canvas(self.imagesize)
             return
         # Redraw the image (assuming one was given).
-        w = self.multicanvas.width
-        h = self.multicanvas.height
-        if redraw_image or redraw_annotations:
+        if redraw_image or redraw_annotations or redraw_review:
             self.loading_canvas.restore()
         with ipc.hold_canvas():
             if redraw_image:
                 self.redraw_image()
             if redraw_annotations:
                 self.redraw_annotations()
+            if redraw_review:
+                self.redraw_review()
         # That's all that's required for now.
     def redraw_image(self):
         "Clears the image canvas and redraws the image."
@@ -249,6 +257,29 @@ class FigurePanel(ipw.HBox):
             w = self.image_canvas.width
             h = self.image_canvas.height
             self.image_canvas.draw_image(self.image, 0, 0, w, h)
+    def redraw_review(self):
+        "Clears the draw and image canvases and draws the review canvas."
+        if self.review_msg is None:
+            # If there's nothing to review, we do nothing.
+            return
+        self.image_canvas.clear()
+        self.draw_canvas.clear()
+        self.fg_canvas.clear()
+        dc = self.image_canvas
+        if isinstance(self.review_msg, str):
+            with ipc.hold_canvas():
+                dc.fill_style = 'white'
+                dc.fill_rect(0, 0, dc.width, dc.height)
+                dc.font = "32px HelveticaNeue"
+                dc.fill_style = 'black'
+                dc.text_align = 'left'
+                dc.text_baseline = 'top'
+                dc.fill_text(
+                    self.review_msg,
+                    dc.width//15, dc.height//15,
+                    max_width=(dc.width - dc.width//15*2))
+        else:
+            dc.draw_image(self.review_msg, 0, 0, dc.width, dc.height)
     def redraw_annotations(self, foreground=True, background=True):
         "Clears the draw canvas and redraws all annotations."
         if background: self.draw_canvas.clear()
@@ -453,14 +484,18 @@ class FigurePanel(ipw.HBox):
         ft = self.fixed_tail(self.foreground)
         if fh is None:
             fh = np.zeros((0,2), dtype=float)
+            fhq = False
         else:
             fh = points[[0]]
             points = points[1:]
+            fhq = True
         if ft is None:
             ft = np.zeros((0,2), dtype=float)
+            ftq = False
         else:
             ft = points[[-1]]
             points = points[:-1]
+            ftq = True
         if len(points) < 2:
             if len(points) == 0:
                 import warnings

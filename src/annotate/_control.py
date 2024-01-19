@@ -333,11 +333,31 @@ class ControlPanel(ipw.VBox):
         self.imagesize_slider = self._make_imagesize_slider(imagesize)
         self.selection_panel = SelectionPanel(state)
         self.style_panel = StylePanel(state)
+        self.review_button = ipw.Button(
+            description='Review',
+            button_style='',
+            tooltip='Review the annotations.')
         self.save_button = ipw.Button(
             description='Save',
             button_style='',
-            tooltip='Save all annotations and preferences.',
-            layout={'margin':"3% 33% 3% 33%", "width": "34%"})
+            tooltip='Save all annotations and preferences.')
+        self.edit_button = ipw.Button(
+            description='Edit',
+            button_style='',
+            tooltip='Continue editing annotation.')
+        if state.config.review.function is not None:
+            buttons = [self.review_button, self.save_button, self.edit_button]
+            self.review_button.disabled = False
+            self.save_button.disabled = True
+            self.edit_button.disabled = True
+            layout = {'margin':"3% 3% 3% 3%", "width": "94%"}
+        else:
+            buttons = [self.save_button]
+            self.review_button.disabled = True
+            self.save_button.disabled = False
+            self.edit_button.disabled = True
+            layout = {'margin':"3% 33% 3% 33%", "width": "34%"}
+        self.button_box = ipw.HBox(buttons, layout=layout)
         self.info_message = self._make_infomsg()
         hline = self._make_hline()
         self.vbox_children = [
@@ -348,7 +368,7 @@ class ControlPanel(ipw.VBox):
             hline,
             self.style_panel,
             hline,
-            self.save_button,
+            self.button_box,
             hline,
             self.info_message]
         vbox_layout = {'width': '250px'}
@@ -433,10 +453,24 @@ class ControlPanel(ipw.VBox):
     def observe_save(self, fn):
         """Registers the argument to be called when the save button is clicked.
         
-        The function is called with a single argument, which is the save buttom
+        The function is called with a single argument, which is the save button
         instance.
         """
         self.save_button.on_click(fn)
+    def observe_review(self, fn):
+        """Registers the argument to be called when the save button is clicked.
+        
+        The function is called with a single argument, which is the review
+        button instance.
+        """
+        self.review_button.on_click(fn)
+    def observe_edit(self, fn):
+        """Registers the argument to be called when the edit button is clicked.
+        
+        The function is called with a single argument, which is the edit button
+        instance.
+        """
+        self.edit_button.on_click(fn)
     @property
     def target(self):
         """Compute the current target selection."""
