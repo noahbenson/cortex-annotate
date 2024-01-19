@@ -10,7 +10,7 @@
 # Configuration ################################################################
 
 # Start with the python 3.10 Jupyter scipy-notebook docker-image.
-FROM jupyter/scipy-notebook:python-3.10
+FROM jupyter/scipy-notebook:x86_64-python-3.10
 # Note the Maintainer.
 MAINTAINER Noah C. Benson <nben@uw.edu>
 
@@ -78,25 +78,25 @@ RUN curl -L -o /data/required_subjects/fsaverage_sym.tar.gz \
 USER $NB_USER
 # Install some stuff we are likely to need, including neuropythy.
 
-# The following line that installs jupyter_contrib_nbextensions is a
-# bug workaround; it should be replaced by just this line once the
-# bug is fixed:
-#  && conda install -y -cconda-forge ipywidgets pip jupyter_contrib_nbextensions
-RUN conda update -y -n base conda \
- && conda install -y nibabel s3fs \
- && conda install -y -cconda-forge ipywidgets pip 'jupyter_contrib_nbextensions < 0.7' 'traitlets = 5.9.0' \
- && pip install --upgrade setuptools \
- && pip install ipycanvas pyyaml neuropythy
+RUN mamba update -y -n base mamba
+RUN mamba update --all -y
+#RUN mamba install -y -cconda-forge nibabel s3fs
+RUN mamba install -y -cconda-forge \
+          ipywidgets pip traitlets webcolors jsonschema-with-format-nongpl
+RUN pip install --upgrade setuptools
+RUN pip install ipycanvas pyyaml neuropythy nibabel s3fs
+RUN pip install diplib
 # Install collapsible cell extensions...
-RUN jupyter contrib nbextension install --user \
- && jupyter nbextension enable collapsible_headings/main \
- && jupyter nbextension enable select_keymap/main
+#RUN mamba install -cconda-forge jupyter_contrib_nbextensions \
+# && jupyter contrib nbextension install --user \
+# && jupyter nbextension enable collapsible_headings/main \
+# && jupyter nbextension enable select_keymap/main
 RUN mkdir -p /home/$NB_USER/.jupyter/custom
 # Copy the config directory's requirements over and install them.
 COPY config/requirements.txt /build/
 RUN pip install -r /build/requirements.txt
 # For some reason, tornado is causing major problems, so we downgrade to 6.1 here:
-RUN pip install 'tornado < 6.1' 'jupyter-client <= 7.3.2'
+#RUN pip install 'tornado < 6.1' 'jupyter-client <= 7.3.2'
 
 
 # Copy User Files ##############################################################
