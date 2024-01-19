@@ -1,4 +1,4 @@
-# Config file for the NYU Retinotopy Dataset.
+# Config file for the NYU-NEI Retinotopy Dataset.
 
 display:
   figsize: [4, 4]
@@ -18,69 +18,62 @@ display:
 init: |
     # Import libraries.
     import neuropythy as ny, numpy as np
-    # We load our data from this S3 bucket for the NYU Retinotopy Dataset.
-    data_src = ny.util.pseudo_path(
-        's3://openneuro.org/ds003787/',
-        cache_path='/cache/dataset')
+    from pathlib import Path
+    # Declare where the dataset lives (inside the running docker container):
+    data_path = Path('/data/derivatives')
     # This is the neuropythy mask of the occipital pole for making flatmaps.
     occpole_mask = ('parcellation', 43)
+
 # We assume in this example that the libraries neuropythy and numpy have been
 # imported (as ny and np respectively) in the init section (see below).
 targets:
     # The Subject ID is selectable because there are 3 of them.
     Subject ID:
-        - sub-wlsubj001
-        - sub-wlsubj004
-        - sub-wlsubj006
-        - sub-wlsubj007
-        - sub-wlsubj014
-        - sub-wlsubj019
-        - sub-wlsubj023
-        - sub-wlsubj042
-        - sub-wlsubj043
-        - sub-wlsubj045
-        - sub-wlsubj046
-        - sub-wlsubj055
-        - sub-wlsubj056
-        - sub-wlsubj057
-        - sub-wlsubj062
-        - sub-wlsubj064
-        - sub-wlsubj067
-        - sub-wlsubj071
-        - sub-wlsubj076
-        - sub-wlsubj079
-        - sub-wlsubj081
-        - sub-wlsubj083
-        - sub-wlsubj084
-        - sub-wlsubj085
-        - sub-wlsubj086
-        - sub-wlsubj087
-        - sub-wlsubj088
-        - sub-wlsubj090
-        - sub-wlsubj091
-        - sub-wlsubj092
-        - sub-wlsubj094
-        - sub-wlsubj095
-        - sub-wlsubj104
-        - sub-wlsubj105
-        - sub-wlsubj109
-        - sub-wlsubj114
-        - sub-wlsubj115
-        - sub-wlsubj116
-        - sub-wlsubj117
-        - sub-wlsubj118
-        - sub-wlsubj120
-        - sub-wlsubj121
-        - sub-wlsubj122
-        - sub-wlsubj126
+       - sub-wlsubj119
+       - sub-wlsubj127
+       - sub-wlsubj136
+       - sub-wlsubj137
+       - sub-wlsubj143
+       - sub-wlsubj144
+       - sub-wlsubj145
+       - sub-wlsubj146
+       - sub-wlsubj147
+       - sub-wlsubj148
+       - sub-wlsubj149
+       - sub-wlsubj150
+       - sub-wlsubj151
+       - sub-wlsubj152
+       - sub-wlsubj153
+       - sub-wlsubj154
+       - sub-wlsubj155
+       - sub-wlsubj156
+       - sub-wlsubj157
+       - sub-wlsubj158
+       - sub-wlsubj159
+       - sub-wlsubj160
+       - sub-wlsubj162
+       - sub-wlsubj163
+       - sub-wlsubj164
+       - sub-wlsubj165
+       - sub-wlsubj166
+       - sub-wlsubj167
+       - sub-wlsubj168
+       - sub-wlsubj169
+       - sub-wlsubj170
+       - sub-wlsubj171
+       - sub-wlsubj172
+       - sub-wlsubj173
+       - sub-wlsubj174
+       - sub-wlsubj175
+       - sub-wlsubj176
     # Once we have established the subject ID, we can load the subject object,
     # which we will need for generating images.
     # This code block assumes that the `init` section defined the
     # `data_src` variable.
     subject: |
         subj = target['Subject ID']
-        path = data_src.subpath('derivatives', 'freesurfer', subj)
-        return ny.freesurfer_subject(path)
+        path = data_path / 'freesurfer' / subj
+        return ny.freesurfer_subject(str(path))
     # The hemisphere is another selectable item because there are 2 of them.
     Hemisphere:
         - LH
@@ -93,16 +86,15 @@ targets:
         h = target['Hemisphere'].lower()
         ctx = target['subject'].hemis[h]
         # Load the retinotopy also.
-        path = data_src.subpath('derivatives', 'prfanalyze-vista', subj,
-                                'ses-nyu3t01')
+        path = data_path / 'prfvista' / subj / 'ses-nyu3t01'
         props = dict(
-            polar_angle = ny.load(path.local_path(f"{h}.angle_adj.mgz")),
-            theta = ny.load(path.local_path(f"{h}.angle.mgz")),
-            eccentricity = ny.load(path.local_path(f"{h}.eccen.mgz")),
-            x = ny.load(path.local_path(f"{h}.x.mgz")),
-            y = ny.load(path.local_path(f"{h}.y.mgz")),
-            radius = ny.load(path.local_path(f"{h}.sigma.mgz")),
-            cod = ny.load(path.local_path(f"{h}.vexpl.mgz")))
+            polar_angle = ny.load(str(path / f"{h}.angle_adj.mgz")),
+            theta = ny.load(str(path / f"{h}.angle.mgz")),
+            eccentricity = ny.load(str(path / f"{h}.eccen.mgz")),
+            x = ny.load(str(path / f"{h}.x.mgz")),
+            y = ny.load(str(path / f"{h}.y.mgz")),
+            radius = ny.load(str(path / f"{h}.sigma.mgz")),
+            cod = ny.load(str(path / f"{h}.vexpl.mgz")))
         return ctx.with_prop(props)
     # Additionally, we create a flatmap projection for the hemisphere. Here we
     # make a projection of the occipital cortex.
