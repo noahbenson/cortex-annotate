@@ -329,4 +329,3 @@ review: |
   axes.add_patch(v3pol)
   axes.axis('equal')
   axes.axis('off')
-
