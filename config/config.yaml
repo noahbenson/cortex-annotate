@@ -320,9 +320,6 @@ figures:
         ny.cortex_plot(target['flatmap'], color=key, axes=axes)
 
 review: |
-  #from annotate import watershed_contours
-  #im = watershed_contours(annotations.values(), max_depth=1)
-  #axes.imshow(im, cmap='hsv', vmin=0, vmax=1.5*np.max(im))
   import numpy as np
   # V1:
   v1uvm = annotations['V1 UVM (ventral)']
