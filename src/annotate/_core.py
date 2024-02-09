@@ -667,7 +667,7 @@ class AnnotationTool(ipw.HBox):
         # First, things first: save the annotations.
         self.state.save_annotations()
         # Clear the save hooks if there are any.
-        self.save_hooks = None
+        self.state.save_hooks = None
         # The selection has changed; we need to redraw the image and update the
         # annotations.
         self.refresh_figure()
@@ -696,7 +696,7 @@ class AnnotationTool(ipw.HBox):
                     targ = self.control_panel.target
                     msg = self.state.generate_review(targ, save_hooks)
                     self.control_panel.save_button.disabled = False
-                    self.save_hooks = save_hooks
+                    self.state.save_hooks = save_hooks
                 except Exception as e:
                     msg = str(e)
                     self.control_panel.save_button.disabled = True
@@ -720,7 +720,7 @@ class AnnotationTool(ipw.HBox):
             self.control_panel.edit_button.disabled = True
             self.figure_panel.review_end()
             self.refresh_figure()
-        self.save_hooks = None
+        self.state.save_hooks = None
     def __init__(self,
                  config_path='/config/config.yaml',
                  cache_path='/cache',
