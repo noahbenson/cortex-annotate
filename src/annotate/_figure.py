@@ -77,7 +77,7 @@ class FigurePanel(ipw.HBox):
         # Make a multicanvas for the image [0] and the drawings [1].
         imsz = imagesize
         # Make a multicanvas.
-        self.multicanvas = ipc.MultiCanvas(5, width=imsz, height=imsz)
+        self.multicanvas = ipc.MultiCanvas(6, width=imsz, height=imsz)
         html = ipw.HTML(f"""
             <style> canvas {{
                 cursor: crosshair !important;
@@ -93,11 +93,19 @@ class FigurePanel(ipw.HBox):
         self.draw_canvas = self.multicanvas[1]
         self.fg_canvas = self.multicanvas[2]
         self.loading_canvas = self.multicanvas[3]
-        self.message_canvas = self.multicanvas[4]
+        self.reviewing_canvas = self.multicanvas[4]
+        self.message_canvas = self.multicanvas[5]
         # Draw the loading screen on the loading canvas and save it.
         self.draw_loading(self.loading_canvas)
         self.loading_canvas.save()
         self.loading_context = FigurePanel.LoadingContext(self.loading_canvas)
+        # Same for the reviewing canvas.
+        review_msg = "Preparing review..."
+        self.draw_loading(self.reviewing_canvas, review_msg)
+        self.reviewing_canvas.save()
+        self.reviewing_context = FigurePanel.LoadingContext(
+            self.reviewing_canvas,
+            review_msg)
         # Set up our event observers for clicks/tabs/backspaces.
         self.multicanvas.on_key_down(self.on_key_press)
         self.multicanvas.on_mouse_down(self.on_mouse_click)
@@ -128,7 +136,7 @@ class FigurePanel(ipw.HBox):
             dc.global_alpha = 1
             dc.font = "32px HelveticaNeue"
             dc.fill_style = 'black'
-            dc.text_align = 'center'
+            dc.text_align = 'left'
             dc.fill_text(message, 120, 120)
     def resize_canvas(self, new_size):
         """Resizes the figure canvas so that images appear at the given size.

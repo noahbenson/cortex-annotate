@@ -206,7 +206,7 @@ class AnnotationState:
             meta_data = json.load(f)
         # And return them.
         return (image_data, grid_shape, meta_data)
-    def generate_review(self, target_id):
+    def generate_review(self, target_id, save_hooks):
         """Generates a single figure for the given target and figure name."""
         target = self.config.targets[target_id]
         annots = self.annotations[target_id]
@@ -218,7 +218,10 @@ class AnnotationState:
         dpi = self.config.review.dpi
         (fig,ax) = plt.subplots(1,1, figsize=figsize, dpi=dpi)
         # Run the function from the config that draws the figure.
-        fn(target, annots, fig, ax)
+        fn(target, annots, fig, ax, save_hooks)
+        # We can go ahead and fix the save hooks now:
+        for (k,fn) in save_hooks.items():
+            save_hooks[k] = (target_id, fn)
         # Tidy things up for image plotting.
         ax.axis('off')
         fig.subplots_adjust(0,0,1,1,0,0)
@@ -411,23 +414,34 @@ class AnnotationState:
             # Skip lazy keys; these targets have not even been loaded yet.
             if not annots.is_lazy(tid):
                 self.save_target_annotations(tid)
+    def run_save_hooks(self):
+        "Runs any save hooks that were registered by the review."
+        hooks = self.save_hooks
+        self.save_hooks = None
+        if hooks is not None:
+            for (filename, (tid, fn)) in hooks.items():
+                filename = os.path.join(self.target_save_path(tid), filename)
+                fn(filename)
     def save(self):
         """Saves both the user preferences and the user annotations."""
         self.save_preferences()
         self.save_annotations()
+        self.run_save_hooks()
     __slots__ = ("config", "cache_path", "save_path", "git_path", "username",
                  "annotations", "builtin_annotations", "preferences",
-                 "loading_context")
+                 "loading_context", "reviewing_context", "save_hooks")
     def __init__(self,
                  config_path='/config/config.yaml',
                  cache_path='/cache',
                  save_path='/save',
                  git_path='/git',
                  username=None,
-                 loading_context=None):
+                 loading_context=None,
+                 reviewing_context=None):
         self.config = Config(config_path)
         self.cache_path = cache_path
         self.git_path = git_path
+        self.save_hooks = None
         # We add the git username to the save path if needed here.
         if username is None:
             (git_account, git_reponame) = self.gitdata
@@ -444,6 +458,9 @@ class AnnotationState:
         if loading_context is None:
             loading_context = NoOpContext()
         self.loading_context = loading_context
+        if reviewing_context is None:
+            reviewing_context = NoOpContext()
+        self.reviewing_context = reviewing_context
         # (Lazily) load the annotations.
         self.annotations = self.load_annotations()
         self.builtin_annotations = self.load_builtin_annotations()
@@ -649,6 +666,8 @@ class AnnotationTool(ipw.HBox):
         if change.name != 'value': return
         # First, things first: save the annotations.
         self.state.save_annotations()
+        # Clear the save hooks if there are any.
+        self.save_hooks = None
         # The selection has changed; we need to redraw the image and update the
         # annotations.
         self.refresh_figure()
@@ -671,11 +690,13 @@ class AnnotationTool(ipw.HBox):
         if rev is None:
             self.control_panel.save_button.disabled = True
         else:
-            with self.state.loading_context:
+            with self.state.reviewing_context:
                 try:
+                    save_hooks = {}
                     targ = self.control_panel.target
-                    msg = self.state.generate_review(targ)
+                    msg = self.state.generate_review(targ, save_hooks)
                     self.control_panel.save_button.disabled = False
+                    self.save_hooks = save_hooks
                 except Exception as e:
                     msg = str(e)
                     self.control_panel.save_button.disabled = True
@@ -690,6 +711,7 @@ class AnnotationTool(ipw.HBox):
             self.refresh_figure()
         self.state.save_annotations()
         self.state.save_preferences()
+        self.state.run_save_hooks()
     def on_edit(self, button):
         "This method runs when the control panel's edit button is clicked."
         if self.figure_panel.review_msg is not None:
@@ -698,6 +720,7 @@ class AnnotationTool(ipw.HBox):
             self.control_panel.edit_button.disabled = True
             self.figure_panel.review_end()
             self.refresh_figure()
+        self.save_hooks = None
     def __init__(self,
                  config_path='/config/config.yaml',
                  cache_path='/cache',
@@ -726,6 +749,7 @@ class AnnotationTool(ipw.HBox):
             imagesize=imagesize)
         # Pass the loading context over to the state.
         self.state.loading_context = self.figure_panel.loading_context
+        self.state.reviewing_context = self.figure_panel.reviewing_context
         # Go ahead and initialize the HBox component.
         super().__init__((self.control_panel, self.figure_panel))
         # Now, we want to display ourselves while we load, so do that.
