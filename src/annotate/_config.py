@@ -529,7 +529,7 @@ class ReviewConfig:
     @staticmethod
     def _compile(code, initcfg):
         return _compile_fn(
-            "target, annotations, figure, axes",
+            "target, annotations, figure, axes, save_hooks",
             f"{code}\n",
             initcfg)
     def __init__(self, yaml, init):
