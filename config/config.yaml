@@ -1,135 +1,147 @@
-# Config file for the NYU Retinotopy Dataset.
+################################################################################
+# This file contains the configuration for the cortex-annotate toolkit. By
+# editing this file, one can configure cortex-annotate to work with various
+# datasets and to enable annotation of specific contours, points, and
+# boundaries. The current contents of this file configure the tool for
+# annotation of the visual cortex of subjects in the NYU retinotopy dataset.
+
 
 display:
   figsize: [4, 4]
   dpi: 128
   plot_options:
-    color: [0.75, 0.75, 1.0]
-    linewidth: 2
+    color: [0.25, 0.25, 0.75]
+    linewidth: 1
     markersize: 1
     linestyle: "solid"
   fg_options:
-    color: [1.0, 1.0, 1.0]
+    color: [0.55, 0.55, 0.9]
     markersize: 2
 
-# In the init section, we want to make sure numpy and neuropythy are imported,
-# and we want to make sure we have define a subject_path where we will load
-# subjects from.
 init: |
-    # Import libraries.
-    import neuropythy as ny, numpy as np
-    # We load our data from this S3 bucket for the NYU Retinotopy Dataset.
-    data_src = ny.util.pseudo_path(
-        's3://openneuro.org/ds003787/',
-        cache_path='/cache/dataset')
-    # This is the neuropythy mask of the occipital pole for making flatmaps.
-    occpole_mask = ('parcellation', 43)
+  # Several code-blocks in this config.yaml file use the numpy and neuropythy
+  # libraries, so we load them here.
+  import numpy as np
+  import neuropythy as ny
+  # We also want to create an object that tracks the S3 path/data for the NSD.
+  # We use the cache path '/cache/nsd' because the /cache directory is always
+  # abailable for use with cache files inside of the docker container that runs
+  # the annotation tool.
+  nsd_path = ny.util.pseudo_path(
+      's3://natural-scenes-dataset/nsddata/',
+      cache_path='/cache/nsd')
+  # We will specifically load these population receptive fields (pRF) files in
+  # order to draw visual area annotations on the retinotopic maps for each
+  # subject.
+  nsd_prf_files = {
+      "polar_angle": "prfangle.mgz",
+      "eccentricity": "prfeccentricity.mgz",
+      "cod": "prfR2.mgz",
+      "wang15": "Kastner2015.mgz"}
+  # This occipital pole mask is used with neuropythy's flatmap code; the tuple
+  # indicates that the FreeSurfer parcellation property uses the value 43 to
+  # indicate the occipital pole of the brain.
+  occpole_mask = ('parcellation', 43)
+
 # We assume in this example that the libraries neuropythy and numpy have been
 # imported (as ny and np respectively) in the init section (see below).
 targets:
-    # The Subject ID is selectable because there are 3 of them.
-    Subject ID:
-        - sub-wlsubj001
-        - sub-wlsubj004
-        - sub-wlsubj006
-        - sub-wlsubj007
-        - sub-wlsubj014
-        - sub-wlsubj019
-        - sub-wlsubj023
-        - sub-wlsubj042
-        - sub-wlsubj043
-        - sub-wlsubj045
-        - sub-wlsubj046
-        - sub-wlsubj055
-        - sub-wlsubj056
-        - sub-wlsubj057
-        - sub-wlsubj062
-        - sub-wlsubj064
-        - sub-wlsubj067
-        - sub-wlsubj071
-        - sub-wlsubj076
-        - sub-wlsubj079
-        - sub-wlsubj081
-        - sub-wlsubj083
-        - sub-wlsubj084
-        - sub-wlsubj085
-        - sub-wlsubj086
-        - sub-wlsubj087
-        - sub-wlsubj088
-        - sub-wlsubj090
-        - sub-wlsubj091
-        - sub-wlsubj092
-        - sub-wlsubj094
-        - sub-wlsubj095
-        - sub-wlsubj104
-        - sub-wlsubj105
-        - sub-wlsubj109
-        - sub-wlsubj114
-        - sub-wlsubj115
-        - sub-wlsubj116
-        - sub-wlsubj117
-        - sub-wlsubj118
-        - sub-wlsubj120
-        - sub-wlsubj121
-        - sub-wlsubj122
-        - sub-wlsubj126
-    # Once we have established the subject ID, we can load the subject object,
-    # which we will need for generating images.
-    # This code block assumes that the `init` section defined the
-    # `data_src` variable.
-    subject: |
-        subj = target['Subject ID']
-        path = data_src.subpath('derivatives', 'freesurfer', subj)
-        return ny.freesurfer_subject(path)
-    # The hemisphere is another selectable item because there are 2 of them.
-    Hemisphere:
-        - LH
-        - RH
-    # Cortex, which has a string, is again a lazy value defined by a code
-    # snippet. This snippet extracts the Cortex object for the selected
-    # hemisphere.
-    cortex: |
-        subj = target['Subject ID']
-        h = target['Hemisphere'].lower()
-        ctx = target['subject'].hemis[h]
-        # Load the retinotopy also.
-        path = data_src.subpath('derivatives', 'prfanalyze-vista', subj,
-                                'ses-nyu3t01')
-        props = dict(
-            polar_angle = ny.load(path.local_path(f"{h}.angle_adj.mgz")),
-            theta = ny.load(path.local_path(f"{h}.angle.mgz")),
-            eccentricity = ny.load(path.local_path(f"{h}.eccen.mgz")),
-            x = ny.load(path.local_path(f"{h}.x.mgz")),
-            y = ny.load(path.local_path(f"{h}.y.mgz")),
-            radius = ny.load(path.local_path(f"{h}.sigma.mgz")),
-            cod = ny.load(path.local_path(f"{h}.vexpl.mgz")))
-        return ctx.with_prop(props)
-    # Additionally, we create a flatmap projection for the hemisphere. Here we
-    # make a projection of the occipital cortex.
-    flatmap: |
-        # Start by importing neuropythy.
-        # Make a flatmap projection of the occipital cortex.
-        c = target['cortex']
-        return c.mask_flatmap(occpole_mask,
-                              map_right='right',
-                              radius=np.pi/2,
-                              registration='native')
-    # Finally, it's useful to have information about the image coordinates in
-    # the target data, so we add these.
-    xlim: |
-        x = target['flatmap'].coordinates[0]
-        return (np.min(x), np.max(x))
-    ylim: |
-        y = target['flatmap'].coordinates[1]
-        return (np.min(y), np.max(y))
-    projection_data: |
-      proj = target['flatmap'].meta_data['projection']
-      proj = proj.copy(mesh=None)
-      return proj.normalize()
-      
-# When annotating V1-V3 using retinotopic maps; we need contours for the
-# periphery and for V1, V2, and V3 boundaries. When drawn like this, they are
-# all simple contours (not boundaries).
+  # The NSD contains 8 subjects, listed below. The 'Subject ID' entry will be
+  # a dropdown menu in the annotation tool because it is a list of multiple
+  # choices rather than a code-block or a list with a single entry.
+  Subject ID:
+    - subj01
+    - subj02
+    - subj03
+    - subj04
+    - subj05
+    - subj06
+    - subj07
+    - subj08
+  # The 'subject' entry is a multi-line string, so it is interpreted as a Python
+  # code snippet. This snippet is compiled into a function whose parameter list
+  # contains only the variable `target`. The `target` will be a dictionary with
+  # the target data above the subject, so in this case only the 'Subject ID'.
+  subject: |
+    # Get the subject ID that the user chose from the above selection list.
+    sid = target['Subject ID']
+    # Find a sub-path for the subject's FreeSurfer directory; we get the
+    # nsd_path variable from the `init` section of the config.yaml file; see
+    # above.
+    fs_path = nsd_path.subpath('freesurfer', sid)
+    # Load and return a FreeSurfer subject object for this path.
+    return ny.freesurfer_subject(fs_path)
+  # The 'Hemisphere' is a choice for the user; as a list of two options, it will
+  # appear as a dropdown meny with these two options in the annotation tool.
+  Hemisphere:
+    - LH
+    - RH
+  # We will want to include the Wang et al. (2015) probabilistic visual area
+  # atlas as an optional annotation that users can turn on and off (see the
+  # `builtin_annotations` section, below). This element of the target section
+  # loads the Wang atlas and applies it to the subject we are workign with.
+  wang15: |
+    import neuropythy.commands as nycmd, os
+    # Grab the subject object that was loaded in the 'subject' section.
+    sub = target['subject']
+    # We also need to know the hemisphere name.
+    h = target['Hemisphere'].lower()
+    # Get the subject's cache-path; this is tracked by neuropythy.
+    subpath = sub.pseudo_path.cache_path
+    # Possibly, this atlas has already been applied to this subject; if so, we
+    # don't need to (re-)run neuropythy's atlas command (which applies the atlas
+    # to the subject and saves it as a file).
+    wangpath = os.path.join(subpath, 'surf', f'{h}.wang15_mplbl.mgz')
+    if not os.path.isfile(wangpath):
+        # Make sure the fsaverage-alignment has already been loaded into cache;
+        # because the atlas command operates on the filesystem while the subject
+        # and cache path load things lazily, we need to make sure these have
+        # already been downloaded before we run the command.
+        sub.hemis['lh'].surface('fsaverage')
+        sub.hemis['rh'].surface('fsaverage')
+        # Now run the atlas command.
+        nycmd.atlas.main(["-awang15", "-fmgz", subpath])
+    # Load and return the file.
+    return ny.load(wangpath)
+  # The 'cortex' key in the target data is for the cortical surface object,
+  # which is managed and loaded by neuropythy from the subject's FreeSurfer
+  # object. Note that the 'cortex' entry is like the 'subject' entry in that it
+  # is compiled into a function whose only parameter is a dict object called
+  # `target`, but because it is farther down in the target section, the `target`
+  # parameter will contain entries for 'Subject ID', 'subject', and 'Hemisphere'
+  # from the sections above.
+  cortex: |
+    # Extract the subject object and the hsmisphere name.
+    sub = target['subject']
+    h = target['Hemisphere'].lower()
+    # Load retinotopic mapping data from the label directory, where these data
+    # are stored on the NSD repository.
+    label_path = nsd_path.subpath('freesurfer', sub, 'label')
+    props = {
+        k: ny.load(label_path.subpath(f'{h}.{filename}'))
+        for (k,filename) in nsd_prf_files.items()}
+    # Convert the polar angle into Neuropythy's "visual" format (i.e., 0 degrees
+    # is the upper vertical meridian, 90 degrees is the right horizontal
+    # meridian, and -90 degrees is the left horizontal meridian.
+    ang = props['polar_angle']
+    props['polar_angle'] = np.mod(90 - ang + 180, 360) - 180
+    # Add the Wang et al. (2015) atlas, loaded in the above 'wang15' section.
+    props['wang15'] = target['wang15']
+    # Grab the appropriate coretx/hemisphere object.
+    cortex = sub.hemis[h]
+    # Finally, return that hemisphere object with the properties associated with
+    # it (this is Neuropythy's typical modus operandi for adding properties to
+    # existing objects: make a copy with the properties attached).
+    return cortex.with_prop(props)
+  # Finally, we include a 'flatmap' entry of the `targets` section in order to
+  # create a flattened projection of the hemisphere for annotation. We use the
+  # `mask_flatmap` method of the cortex/hemisphere object in order to create a
+  # projection of the inflated native surface that is centered on the occipital
+  # pole. This uses the `occpole_mask` defined in the `init` section above.
+  flatmap: |
+    cortex = target['cortex']
+    return cortex.mask_flatmap(occpole_mask, map_right='right', radius=np.pi/2)
+
 annotations:
   # V1 contours:
   V1 Foveal Point:
@@ -188,11 +200,11 @@ annotations:
       - ["polar_angle", "eccentricity"]
       - ["curvature", "cod"]
   V2 Dorsal Periphery:
-    fixed_tail:
+    fixed_head:
       requires: V2 LVM (dorsal)
       calculate: |
         return annotations['V2 LVM (dorsal)'][-1,:]
-    fixed_head:
+    fixed_tail:
       requires: V1 LVM (dorsal)
       calculate: |
         return annotations['V1 LVM (dorsal)'][-1,:]
@@ -228,104 +240,50 @@ annotations:
       - ["polar_angle", "eccentricity"]
       - ["curvature", "cod"]
   V3 Dorsal Periphery:
-    fixed_tail:
+    fixed_head:
       requires: V3 LVM (dorsal)
       calculate: |
         return annotations['V3 LVM (dorsal)'][-1,:]
-    fixed_head:
+    fixed_tail:
       requires: V2 LVM (dorsal)
       calculate: |
         return annotations['V2 LVM (dorsal)'][-1,:]
     grid:
       - ["polar_angle", "eccentricity"]
       - ["curvature", "cod"]
-  # Ventral Contours
-  hV4 LVM (ventral-outer):
-    fixed_head: V3 Foveal Point
-    grid:
-      - ["polar_angle", "eccentricity"]
-      - ["curvature", "cod"]
-  VO Outer:
-    fixed_head:
-      requires: V3 UVM (ventral)
-      calculate: |
-        return annotations['V3 UVM (ventral)'][-1,:]
-    fixed_tail:
-      requires: hV4 LVM (ventral-outer)
-      calculate: |
-        return annotations['hV4 LVM (ventral-outer)'][-1,:]
-    grid:
-      - ["polar_angle", "eccentricity"]
-      - ["curvature", "cod"]
-  hV4-VO1 Boundary:
-    - ["polar_angle", "eccentricity"]
-    - ["curvature", "cod"]
-  VO1-VO2 Boundary:
-    - ["polar_angle", "eccentricity"]
-    - ["curvature", "cod"]
-  # Dorsal Contours
-  V3a-V3b Outer:
-    fixed_head:
-      requires: V3 LVM (dorsal)
-      calculate: |
-        return annotations['V3 LVM (dorsal)'][-1,:]
-    grid:
-      - ["polar_angle", "eccentricity"]
-      - ["curvature", "cod"]
-  V3a-V3b Inner:
-    - ["polar_angle", "eccentricity"]
-    - ["curvature", "cod"]
-  IPS0 Outer:
-    - ["polar_angle", "eccentricity"]
-    - ["curvature", "cod"]
-  LO1 Outer:
-    fixed_head: V3 Foveal Point
-    grid:
-      - ["polar_angle", "eccentricity"]
-      - ["curvature", "cod"]
+
+builtin_annotations:
+  Wang2015 Atlas:
+    type: points
+    plot_options:
+      color: [1, 1, 0]
+      markersize: 1
+      visible: false
+    data: |
+      fmap = target['flatmap']
+      (u,v) = fmap.tess.indexed_edges
+      w = fmap.prop('wang15')
+      xy = fmap.coordinates
+      ii = w[u] != w[v]
+      dat = np.mean([xy[:,u[ii]], xy[:,v[ii]]], axis=0)
+      return [dat.T]
 
 figures:
-    # We don't need an init block, but we do want to make sure the images all
-    # have the xlim and ylim set correctly.
-    term: |
-        axes.set_xlim(target['xlim'])
-        axes.set_ylim(target['ylim'])
-        # We also want to put the projection data into the meta-data.
-        meta_data['projection'] = target['projection_data']
-    # The highlight images need some specific code to plot correctly.
-    highlight_vm: |
-        th = target['flatmap'].prop('theta')
-        h = (1 - np.abs(np.cos(th)))**2
-        ny.cortex_plot(target['flatmap'], color=h, axes=axes,
-                       cmap='hot', vmin=0, vmax=1)
-    highlight_hm: |
-        th = target['flatmap'].prop('theta')
-        h = (1 - np.abs(np.sin(th)))**2
-        ny.cortex_plot(target['flatmap'], color=h, axes=axes,
-                       cmap='hot', vmin=0, vmax=1)
-    highlight_periphery: |
-        eccen = target['flatmap'].prop('eccentricity')
-        maxecc = np.nanpercentile(eccen, 95)
-        hl = np.sqrt(np.abs(maxecc - eccen))*np.sqrt(maxecc)
-        ny.cortex_plot(target['flatmap'], color=hl, axes=axes,
-                       cmap='hot', vmax=0, vmin=maxecc)
-    # The curvature is very straightforward.
-    curvature: |
-        ny.cortex_plot(target['flatmap'])
-    # The COD needs some special parameters also.
-    cod: |
-        ny.cortex_plot(target['flatmap'], color='cod', axes=axes, cmap='hot',
-                       vmin=0, vmax=1)
-    # We also want to have thresholded versions of these plots.
-    polar_angle_thresh: |
-        ny.cortex_plot(target['flatmap'], color='polar_angle', axes=axes,
-                       mash=('cod', 0.1, 1), cmap='hot', vmin=0, vmax=1)
-    eccentricity_thresh: |
-        ny.cortex_plot(target['flatmap'], color='eccentricity', axes=axes,
-                       mash=('cod', 0.1, 1), cmap='hot', vmin=0, vmax=1)
-    # The rest are PRF properties.
-    _: |
-        ny.cortex_plot(target['flatmap'], color=key, axes=axes)
+  term: |
+    xy = target['flatmap'].coordinates
+    (xmin,ymin) = np.min(xy, axis=1)
+    (xmax,ymax) = np.max(xy, axis=1)
+    axes.set_xlim((xmin,xmax))
+    axes.set_ylim((ymin,ymax))
+  polar_angle: |
+    ny.cortex_plot(target['flatmap'], color="polar_angle", axes=axes)
+  eccentricity: |
+    ny.cortex_plot(target['flatmap'], color="eccentricity", axes=axes)
+  cod: |
+    ny.cortex_plot(target['flatmap'], color="cod", axes=axes,
+                   cmap='hot', vmin=0, vmax=100)
+  curvature: |
+    ny.cortex_plot(target['flatmap'], axes=axes)
 
 review: |
   #from annotate import watershed_contours
@@ -371,3 +329,4 @@ review: |
   axes.add_patch(v3pol)
   axes.axis('equal')
   axes.axis('off')
+
