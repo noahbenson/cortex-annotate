@@ -237,3 +237,21 @@ def watershed_contours(contours, mesh=None,
     cs = np.round(xpx).astype(int)
     rs = np.round(ypx).astype(int)
     return lbls[rs, cs]
+
+
+# Word Wrapping ################################################################
+def wrap(message, wrap=60):
+    """Word-wraps a string and returns the wrapped string.
+
+    This function is a simple wrapper around the `textwrap.wrap` function. If
+    the optional argument `wrap` is `None` or `False`, then no wrapping is
+    performed and the message is returned as-is. Otherwise, the message is
+    wrapped with the width given by `wrap`.
+    """
+    import textwrap
+    if wrap:
+        if wrap is True or wrap is Ellipsis:
+            wrap = 60
+        message = textwrap.wrap(message, width=wrap)
+        message = "\n".join(message)
+    return message

@@ -607,7 +607,10 @@ class AnnotationTool(ipw.HBox):
         if len(deps) > 0:
             fs = None
             annlist = ", ".join(deps)
-            error = f"The following annotations are dependant:\n  {annlist}"
+            error = (
+                f"The following annotations are dependant on contour {annot}:\n"
+                f" {annlist}. Please select a contour that does not depend on"
+                f" other existing contours.")
             fh = None
             ft = None
         else:

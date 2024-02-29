@@ -53,21 +53,30 @@ class FigurePanel(ipw.HBox):
             if count == 0:
                 self.canvas.clear()
                 del c[idc]
-    def write_message(self, message):
+    def write_message(self, message, wrap=True, fontsize=32, canvas=None):
         """Sets a message in the message canvas."""
-        dc = self.message_canvas
+        from ._util import wrap as wordwrap
+        if canvas is None:
+            dc = self.message_canvas
+        else:
+            dc = canvas
         with ipc.hold_canvas():
             dc.clear()
             dc.fill_style = 'white'
             dc.global_alpha = 0.85
             dc.fill_rect(0, 0, dc.width, dc.height)
             dc.global_alpha = 1
-            dc.font = "32px HelveticaNeue"
+            dc.font = f"{fontsize}px HelveticaNeue"
             dc.fill_style = 'black'
             dc.text_align = 'left'
             dc.text_baseline = 'top'
-            dc.fill_text(message, dc.width//15, dc.height//15,
-                         max_width=(dc.width - dc.width//15*2))
+            # Word wrap the message before printing.
+            if wrap is True or wrap is Ellipsis:
+                wrap = int(dc.width*13/15 / fontsize*2)
+            message = wordwrap(message, wrap=wrap)
+            for (ii,ln) in enumerate(message.split("\n")):
+                dc.fill_text(ln, dc.width//15, dc.height//15 + fontsize*ii,
+                             max_width=(dc.width - dc.width//15*2))
     def clear_message(self):
         """Clears the current message canvas."""
         self.message_canvas.clear()
@@ -126,18 +135,25 @@ class FigurePanel(ipw.HBox):
         # Initialize our parent class.
         super().__init__([html, self.multicanvas])
     @classmethod
-    def draw_loading(cls, dc, message='Loading...'):
+    def draw_loading(cls, dc, message='Loading...', wrap=True, fontsize=32):
         """Clears the draw canvas and draws the loading screen."""
+        from ._util import wrap as wordwrap
         with ipc.hold_canvas():
             dc.clear()
             dc.fill_style = 'white'
             dc.global_alpha = 0.85
             dc.fill_rect(0, 0, dc.width, dc.height)
             dc.global_alpha = 1
-            dc.font = "32px HelveticaNeue"
+            dc.font = f"{fontsize}px HelveticaNeue"
             dc.fill_style = 'black'
             dc.text_align = 'left'
-            dc.fill_text(message, 120, 120)
+            # Word wrap the message before printing.
+            if wrap is True or wrap is Ellipsis:
+                wrap = int(dc.width*13/15 / fontsize*2)
+            message = wordwrap(message, wrap=wrap)
+            for (ii,ln) in enumerate(message.split("\n")):
+                dc.fill_text(ln, dc.width//15, dc.height//15 + fontsize*ii,
+                             max_width=(dc.width - dc.width//15*2))
     def resize_canvas(self, new_size):
         """Resizes the figure canvas so that images appear at the given size.
 
@@ -205,7 +221,8 @@ class FigurePanel(ipw.HBox):
                    (ylim[1] - ylim[0]) / imheight]
         points += [xlim[0], ylim[0]]
         return points
-    def review_start(self, msg):
+    def review_start(self, msg, wrap=True):
+        from ._util import wrap as wordwrap
         self.review_msg = msg
         self.redraw_canvas(redraw_review=True)
     def review_end(self):
@@ -265,7 +282,7 @@ class FigurePanel(ipw.HBox):
             w = self.image_canvas.width
             h = self.image_canvas.height
             self.image_canvas.draw_image(self.image, 0, 0, w, h)
-    def redraw_review(self):
+    def redraw_review(self, wrap=True, fontsize=32):
         "Clears the draw and image canvases and draws the review canvas."
         if self.review_msg is None:
             # If there's nothing to review, we do nothing.
@@ -278,14 +295,11 @@ class FigurePanel(ipw.HBox):
             with ipc.hold_canvas():
                 dc.fill_style = 'white'
                 dc.fill_rect(0, 0, dc.width, dc.height)
-                dc.font = "32px HelveticaNeue"
-                dc.fill_style = 'black'
-                dc.text_align = 'left'
-                dc.text_baseline = 'top'
-                dc.fill_text(
+                self.write_message(
                     self.review_msg,
-                    dc.width//15, dc.height//15,
-                    max_width=(dc.width - dc.width//15*2))
+                    wrap=wrap,
+                    fontsize=fontsize,
+                    canvas=dc)
         else:
             dc.draw_image(self.review_msg, 0, 0, dc.width, dc.height)
     def redraw_annotations(self, foreground=True, background=True):
