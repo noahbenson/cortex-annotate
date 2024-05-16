@@ -53,21 +53,30 @@ class FigurePanel(ipw.HBox):
             if count == 0:
                 self.canvas.clear()
                 del c[idc]
-    def write_message(self, message):
+    def write_message(self, message, wrap=True, fontsize=32, canvas=None):
         """Sets a message in the message canvas."""
-        dc = self.message_canvas
+        from ._util import wrap as wordwrap
+        if canvas is None:
+            dc = self.message_canvas
+        else:
+            dc = canvas
         with ipc.hold_canvas():
             dc.clear()
             dc.fill_style = 'white'
             dc.global_alpha = 0.85
             dc.fill_rect(0, 0, dc.width, dc.height)
             dc.global_alpha = 1
-            dc.font = "32px HelveticaNeue"
+            dc.font = f"{fontsize}px HelveticaNeue"
             dc.fill_style = 'black'
             dc.text_align = 'left'
             dc.text_baseline = 'top'
-            dc.fill_text(message, dc.width//15, dc.height//15,
-                         max_width=(dc.width - dc.width//15*2))
+            # Word wrap the message before printing.
+            if wrap is True or wrap is Ellipsis:
+                wrap = int(dc.width*13/15 / fontsize*2)
+            message = wordwrap(message, wrap=wrap)
+            for (ii,ln) in enumerate(message.split("\n")):
+                dc.fill_text(ln, dc.width//15, dc.height//15 + fontsize*ii,
+                             max_width=(dc.width - dc.width//15*2))
     def clear_message(self):
         """Clears the current message canvas."""
         self.message_canvas.clear()
@@ -77,7 +86,7 @@ class FigurePanel(ipw.HBox):
         # Make a multicanvas for the image [0] and the drawings [1].
         imsz = imagesize
         # Make a multicanvas.
-        self.multicanvas = ipc.MultiCanvas(5, width=imsz, height=imsz)
+        self.multicanvas = ipc.MultiCanvas(6, width=imsz, height=imsz)
         html = ipw.HTML(f"""
             <style> canvas {{
                 cursor: crosshair !important;
@@ -93,11 +102,19 @@ class FigurePanel(ipw.HBox):
         self.draw_canvas = self.multicanvas[1]
         self.fg_canvas = self.multicanvas[2]
         self.loading_canvas = self.multicanvas[3]
-        self.message_canvas = self.multicanvas[4]
+        self.reviewing_canvas = self.multicanvas[4]
+        self.message_canvas = self.multicanvas[5]
         # Draw the loading screen on the loading canvas and save it.
         self.draw_loading(self.loading_canvas)
         self.loading_canvas.save()
         self.loading_context = FigurePanel.LoadingContext(self.loading_canvas)
+        # Same for the reviewing canvas.
+        review_msg = "Preparing review..."
+        self.draw_loading(self.reviewing_canvas, review_msg)
+        self.reviewing_canvas.save()
+        self.reviewing_context = FigurePanel.LoadingContext(
+            self.reviewing_canvas,
+            review_msg)
         # Set up our event observers for clicks/tabs/backspaces.
         self.multicanvas.on_key_down(self.on_key_press)
         self.multicanvas.on_mouse_down(self.on_mouse_click)
@@ -114,21 +131,29 @@ class FigurePanel(ipw.HBox):
         self.fixed_tails = None
         self.annotation_types = {}
         self.ignore_input = False
+        self.reviewing = False
         # Initialize our parent class.
         super().__init__([html, self.multicanvas])
     @classmethod
-    def draw_loading(cls, dc, message='Loading...'):
+    def draw_loading(cls, dc, message='Loading...', wrap=True, fontsize=32):
         """Clears the draw canvas and draws the loading screen."""
+        from ._util import wrap as wordwrap
         with ipc.hold_canvas():
             dc.clear()
             dc.fill_style = 'white'
             dc.global_alpha = 0.85
             dc.fill_rect(0, 0, dc.width, dc.height)
             dc.global_alpha = 1
-            dc.font = "32px HelveticaNeue"
+            dc.font = f"{fontsize}px HelveticaNeue"
             dc.fill_style = 'black'
-            dc.text_align = 'center'
-            dc.fill_text(message, 120, 120)
+            dc.text_align = 'left'
+            # Word wrap the message before printing.
+            if wrap is True or wrap is Ellipsis:
+                wrap = int(dc.width*13/15 / fontsize*2)
+            message = wordwrap(message, wrap=wrap)
+            for (ii,ln) in enumerate(message.split("\n")):
+                dc.fill_text(ln, dc.width//15, dc.height//15 + fontsize*ii,
+                             max_width=(dc.width - dc.width//15*2))
     def resize_canvas(self, new_size):
         """Resizes the figure canvas so that images appear at the given size.
 
@@ -196,9 +221,17 @@ class FigurePanel(ipw.HBox):
                    (ylim[1] - ylim[0]) / imheight]
         points += [xlim[0], ylim[0]]
         return points
+    def review_start(self, msg, wrap=True):
+        from ._util import wrap as wordwrap
+        self.review_msg = msg
+        self.redraw_canvas(redraw_review=True)
+    def review_end(self):
+        self.review_msg = None
+        self.redraw_canvas()
     def redraw_canvas(self,
                       image=Ellipsis, grid_shape=None, xlim=None, ylim=None,
-                      redraw_image=True, redraw_annotations=True):
+                      redraw_image=True, redraw_annotations=True,
+                      redraw_review=False):
         """Redraws the entire canvas.
 
         `figure_panel.redraw_canvas()` redraws the canvas as-is.
@@ -232,15 +265,15 @@ class FigurePanel(ipw.HBox):
             self.resize_canvas(self.imagesize)
             return
         # Redraw the image (assuming one was given).
-        w = self.multicanvas.width
-        h = self.multicanvas.height
-        if redraw_image or redraw_annotations:
+        if redraw_image or redraw_annotations or redraw_review:
             self.loading_canvas.restore()
         with ipc.hold_canvas():
             if redraw_image:
                 self.redraw_image()
             if redraw_annotations:
                 self.redraw_annotations()
+            if redraw_review:
+                self.redraw_review()
         # That's all that's required for now.
     def redraw_image(self):
         "Clears the image canvas and redraws the image."
@@ -249,6 +282,26 @@ class FigurePanel(ipw.HBox):
             w = self.image_canvas.width
             h = self.image_canvas.height
             self.image_canvas.draw_image(self.image, 0, 0, w, h)
+    def redraw_review(self, wrap=True, fontsize=32):
+        "Clears the draw and image canvases and draws the review canvas."
+        if self.review_msg is None:
+            # If there's nothing to review, we do nothing.
+            return
+        self.image_canvas.clear()
+        self.draw_canvas.clear()
+        self.fg_canvas.clear()
+        dc = self.image_canvas
+        if isinstance(self.review_msg, str):
+            with ipc.hold_canvas():
+                dc.fill_style = 'white'
+                dc.fill_rect(0, 0, dc.width, dc.height)
+                self.write_message(
+                    self.review_msg,
+                    wrap=wrap,
+                    fontsize=fontsize,
+                    canvas=dc)
+        else:
+            dc.draw_image(self.review_msg, 0, 0, dc.width, dc.height)
     def redraw_annotations(self, foreground=True, background=True):
         "Clears the draw canvas and redraws all annotations."
         if background: self.draw_canvas.clear()
@@ -453,14 +506,18 @@ class FigurePanel(ipw.HBox):
         ft = self.fixed_tail(self.foreground)
         if fh is None:
             fh = np.zeros((0,2), dtype=float)
+            fhq = False
         else:
             fh = points[[0]]
             points = points[1:]
+            fhq = True
         if ft is None:
             ft = np.zeros((0,2), dtype=float)
+            ftq = False
         else:
             ft = points[[-1]]
             points = points[:-1]
+            ftq = True
         if len(points) < 2:
             if len(points) == 0:
                 import warnings
