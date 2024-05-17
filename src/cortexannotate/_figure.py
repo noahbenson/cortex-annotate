@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 ################################################################################
-# annotate/_figure.py
+# cortexannotate/_figure.py
 
 """Core implementation code for the cortex-annotate tool's figure panel.
 

@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 ################################################################################
-# annotate/_util.py
+# cortexannotate/_util.py
 #
 # Utility types and functions used in the annotation toolkit.
 

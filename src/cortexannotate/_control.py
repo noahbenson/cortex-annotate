@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 ################################################################################
-# annotate/_control_panel.py
+# cortexannotate/_control_panel.py
 
 """Core implementation code for the annotation tool's control panel.
 

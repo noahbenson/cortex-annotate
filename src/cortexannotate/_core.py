@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 ################################################################################
-# annotate/_core.py
+# cortexannotate/_core.py
 
 """Core implementation code for the annotation tool's interface.
 
