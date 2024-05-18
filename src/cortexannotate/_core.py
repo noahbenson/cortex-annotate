@@ -736,7 +736,6 @@ class AnnotationTool(ipw.HBox):
             from tempfile import TemporaryDirectory
             self._cache_path_tmpdir = TemporaryDirectory()
             cache_path = self._cache_path_tmpdir.name
-            print(cache_path)
         self.cache_path = cache_path
         self.state = AnnotationState(
             config_path=config_path,

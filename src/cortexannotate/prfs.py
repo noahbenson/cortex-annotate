@@ -142,6 +142,8 @@ def _load_prfanalyze_vista_prfs(prf_path, tag, invert_y=True):
         x=np.squeeze(nib.load(os.fspath(x0)).dataobj),
         y=np.squeeze(nib.load(os.fspath(y0)).dataobj),
         r2=np.squeeze(nib.load(os.fspath(r2)).dataobj))
+    if invert_y:
+        files['y'] = - files['y']
     return files
 def _make_prfanalyze_vista_config(file, targets,
                                   surf_path, surf_format, prf_path,
@@ -223,10 +225,64 @@ def _make_prfanalyze_vista_config(file, targets,
         ny.cortex_plot(target['flatmap'])
       _: |
         ny.cortex_plot(target['flatmap'], color=key, axes=axes)'''
-    s = f"{init_block}\n{targets_block}\n{annot_block}\n{figures_block}\n"
+    review_block = f'''
+    review: |
+      from cortexannotate.prfs import _review_prfanalyze_vista_rois
+      _review_prfanalyze_vista_rois(target, annotations, figure, axes,
+                                    save_hooks, visual_areas)
+    '''
+    s = (f"{init_block}\n"
+         f"{display_block}\n"
+         f"{targets_block}\n"
+         f"{annot_block}\n"
+         f"{figures_block}\n"
+         f"{review_block}\n")
     s = '\n'.join([ln[4:] for ln in s.split('\n')])
     file.write(s)
-
+def _review_prfanalyze_vista_rois(target, annotations,
+                                  fig, axes, save_hooks,
+                                  visual_areas):
+    # We want to step through the annotations in the order given in the
+    # visual_areas option.
+    from matplotlib.pyplot import Polygon
+    n = np.max(list(visual_areas.values()))
+    for k in enumerate(visual_areas.keys()):
+        ann = annotations.get(k)
+        if k is None:
+            continue
+        if len(ann) < 3:
+            raise ValueError(f"Boundary for {k} has fewer than 3 points!")
+        v = visual_areas[k]
+        gl = v / n
+        poly = Polygon(
+            ann,
+            closed=True,
+            fill=True,
+            color=(gl, gl, gl),
+            zorder=(n - k))
+        axes.add_patch(poly)
+    # Make the plot and convert to a nifti2 file.
+    ax.axis('off')
+    ax.set_facecolor('k')
+    (xmin,ymin) = np.min(target['flatmap'].coordinates, axis=1)
+    (xmax,ymax) = np.max(target['flatmap'].coordinates, axis=1)
+    ax.set_xlim([xmin,xmax])
+    ax.set_ylim([ymin,ymax])
+    fig.canvas.draw()
+    image_flat = np.frombuffer(fig.canvas.tostring_rgb(), dtype='uint8')
+    (w,h) = fig.canvas.get_width_height()
+    image = image_flat.reshape(h, w, 3)
+    image = np.round(n * np.mean(image, axis=-1)).astype(int)
+    imcoords = (target['flatmap'].coordinates.T - [xmin, ymin])
+    imcoords *= ([(w-1) / (xmax - xmin), (h-1) / (ymax - ymin)])
+    (cols, rows) = np.round(imcoords).astype(int)
+    labels = image[rows, cols]
+    def _savenii2(filename):
+        nii = nib.Nifti2Image(labels, np.eye(4)),
+        nii.header.set_xyzt_units('mm', 'sec')
+        ny.save(filename, nii)
+    save_hooks["labels.annot"] = _savenii2
+        
 
 # annotate_prfs ################################################################
 
@@ -254,6 +310,9 @@ def annotate_prfs(bids_path,
         visual_areas = annotate_prfs_visual_areas_default
     elif not isinstance(visual_areas, dict):
         visual_areas = {k:(ii+1) for (ii,k) in enumerate(visual_areas)}
+    if any(not isinstance(v, int) or v < 1 for v in visual_areas.values()):
+        raise ValueError(
+            "visual_areas must contain strings mapped to positive integers")
     if not isinstance(bids_path, (str, os.PathLike)):
         raise ValueError(
             f"annotate_prfs expected str or PathLike for argument bids_path,"
@@ -280,23 +339,26 @@ def annotate_prfs(bids_path,
     # First step: find the FreeSurfer or HCPpipelines path.
     (surffmt, surfpath) = _find_bids_surfpath(
         bids_path, surface_format, surface_path)
-    # Next, get a nested dictionary of the PRF files.
-    (prf_path, analysis) = _find_prfanalyze_vista_path(bids_path, prf_format)
-    if analysis is not None:
-        out_path = out_path / analysis
-    # Now figure out the targets we're going to use:
-    targets = _find_prfanalyze_vista_targets(prf_path)
-    if len(targets) < 1:
-        raise ValueError(f"no targets found in path: {prf_path}")
-    # Next we need to make a configuration file and put it in the derivatives
-    # directory.
-    out_path.mkdir(exist_ok=True, parents=True, mode=mkdir_mode)
-    config_path = out_path / 'config.yaml'
-    with open(config_path, 'wt') as cfg:
-        _make_prfanalyze_vista_config(
-            cfg, targets,
-            surfpath, surffmt, prf_path,
-            invert_y, visual_areas)
+    # Next, parse the prf_format and get a nested dictionary of the PRF files.
+    if prf_format.startswith('prfanalyze-vista'):
+        (prf_path,analysis) = _find_prfanalyze_vista_path(bids_path, prf_format)
+        # Now figure out the targets we're going to use:
+        targets = _find_prfanalyze_vista_targets(prf_path)
+        if len(targets) < 1:
+            raise ValueError(f"no targets found in path: {prf_path}")
+        # Next we need to make a configuration file and put it in the derivatives
+        # directory.
+        if analysis is not None:
+            out_path = out_path / analysis
+        out_path.mkdir(exist_ok=True, parents=True, mode=mkdir_mode)
+        config_path = out_path / 'config.yaml'
+        with open(config_path, 'wt') as cfg:
+            _make_prfanalyze_vista_config(
+                cfg, targets,
+                surfpath, surffmt, prf_path,
+                invert_y, visual_areas)
+    else:
+        raise ValueError(f"prf_format not currently supported: {prf_format}")
     # Now run the annotation tool...
     from cortexannotate import AnnotationTool
     return AnnotationTool(
@@ -304,6 +366,3 @@ def annotate_prfs(bids_path,
         cache_path=cache_path,
         save_path=out_path,
         git_path=None)
-
-
-
