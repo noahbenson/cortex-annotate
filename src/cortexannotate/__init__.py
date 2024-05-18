@@ -20,6 +20,7 @@ noahbenson/cortex-annotate.
 
 from ._util import (delay, ldict, watershed_contours)
 from ._core import AnnotationTool
+from .prfs  import annotate_prfs
 
 
 # Meta-Data ####################################################################

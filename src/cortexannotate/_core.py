@@ -732,6 +732,11 @@ class AnnotationTool(ipw.HBox):
                  username=None,
                  control_panel_background_color="#f0f0f0",
                  save_button_color="#e0e0e0"):
+        if cache_path is None:
+            from tempfile import TemporaryDirectory
+            self._cache_path_tmpdir = TemporaryDirectory()
+            cache_path = self._cache_path_tmpdir.name
+            print(cache_path)
         self.cache_path = cache_path
         self.state = AnnotationState(
             config_path=config_path,
