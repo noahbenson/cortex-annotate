@@ -284,7 +284,6 @@ def _review_prfanalyze_vista_rois(target, annotations,
     (cols, rows) = np.round(imcoords.T).astype(int)
     labels = image[rows, cols]
     plt.close(lblfig)
-    f.close()
     def _savenii2(filename):
         import nibabel as nib
         lbls = np.zeros(target['hem'].vertex_count, dtype=np.int32)
