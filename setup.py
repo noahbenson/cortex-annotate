@@ -37,4 +37,4 @@ setup(
         'Operating System :: POSIX',
         'Operating System :: Unix',
         'Operating System :: MacOS'],
-    packages=['cortexannotate', 'cortexannotate.prfs'])
+    packages=['cortexannotate'])
