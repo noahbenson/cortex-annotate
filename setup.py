@@ -15,7 +15,7 @@ setup(
         See the README.md file at the github repository for this package:
         https://github.com/noahbenson/cortex-annotate
     ''',
-    package_dir={'cortexannotate': 'src'},
+    package_dir={'': 'src'},
     url='https://github.com/noahbenson/cortex-annotate',
     download_url='https://github.com/noahbenson/cortex-annotate',
     license='MIT',
