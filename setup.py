@@ -5,7 +5,7 @@ from setuptools import (setup, Extension)
 
 setup(
     name='cortexannotate',
-    version='0.1.2',
+    version='0.1.3',
     description='Toolbox for flexible annotation of the cortical surface by many raters',
     keywords='neuroscience cortex annotation',
     author='Noah C. Benson',
@@ -37,4 +37,12 @@ setup(
         'Operating System :: POSIX',
         'Operating System :: Unix',
         'Operating System :: MacOS'],
+    install_requires=[
+        'neuropythy >= 0.12.13',
+        'pandas >= 2.2.2',
+        'pyyaml >= 6.0.1',
+        'ipywidgets >= 8.1.2',
+        'ipycanvas >= 0.13.2',
+        'imageio >= 2.26.0',
+        'pandas >= 1.4.1'],
     packages=['cortexannotate'])
