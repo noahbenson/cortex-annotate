@@ -174,7 +174,9 @@ def _make_prfanalyze_vista_config(file, targets,
       # The (FreeSurfer or HCP) path we get surface-based data from.
       surfdata_path = Path("{fspath(surf_path)}")
       prfdata_path = Path("{prf_path}")
-      target_paths = { {k: str(v) for (k,v) in targets.items()} }'''
+      target_paths = { {k: str(v) for (k,v) in targets.items()} }
+      # The visual areas we are labeling.
+      visual_areas = {visual_areas}'''
     targets_block = f'''
     targets:
       Target:
@@ -244,45 +246,60 @@ def _review_prfanalyze_vista_rois(target, annotations,
                                   visual_areas):
     # We want to step through the annotations in the order given in the
     # visual_areas option.
+    import matplotlib.pyplot as plt
+    import neuropythy as ny
+    (lblfig, lblax) = plt.subplots(1,1, figsize=(4,4), dpi=256, facecolor='k')
     from matplotlib.pyplot import Polygon
     n = np.max(list(visual_areas.values()))
-    for k in enumerate(visual_areas.keys()):
+    for (k,v) in visual_areas.items():
         ann = annotations.get(k)
-        if k is None:
+        if ann is None or len(ann) == 0:
             continue
         if len(ann) < 3:
             raise ValueError(f"Boundary for {k} has fewer than 3 points!")
-        v = visual_areas[k]
         gl = v / n
         poly = Polygon(
             ann,
             closed=True,
             fill=True,
-            color=(gl, gl, gl),
-            zorder=(n - k))
-        axes.add_patch(poly)
+            edgecolor=None,
+            facecolor=(gl, gl, gl),
+            zorder=(n - v))
+        lblax.add_patch(poly)
     # Make the plot and convert to a nifti2 file.
-    ax.axis('off')
-    ax.set_facecolor('k')
+    lblax.axis('off')
+    lblax.set_facecolor('k')
     (xmin,ymin) = np.min(target['flatmap'].coordinates, axis=1)
     (xmax,ymax) = np.max(target['flatmap'].coordinates, axis=1)
-    ax.set_xlim([xmin,xmax])
-    ax.set_ylim([ymin,ymax])
-    fig.canvas.draw()
-    image_flat = np.frombuffer(fig.canvas.tostring_rgb(), dtype='uint8')
-    (w,h) = fig.canvas.get_width_height()
+    lblax.set_xlim([xmin,xmax])
+    lblax.set_ylim([ymin,ymax])
+    lblfig.canvas.draw()
+    image_flat = np.frombuffer(lblfig.canvas.tostring_rgb(), dtype='uint8')
+    (w,h) = lblfig.canvas.get_width_height()
     image = image_flat.reshape(h, w, 3)
-    image = np.round(n * np.mean(image, axis=-1)).astype(int)
+    image = np.round(n * np.mean(image, axis=-1)/255).astype(int)
+    image = np.flipud(image)
     imcoords = (target['flatmap'].coordinates.T - [xmin, ymin])
     imcoords *= ([(w-1) / (xmax - xmin), (h-1) / (ymax - ymin)])
-    (cols, rows) = np.round(imcoords).astype(int)
+    (cols, rows) = np.round(imcoords.T).astype(int)
     labels = image[rows, cols]
+    plt.close(lblfig)
+    f.close()
     def _savenii2(filename):
-        nii = nib.Nifti2Image(labels, np.eye(4)),
+        import nibabel as nib
+        lbls = np.zeros(target['hem'].vertex_count, dtype=np.int32)
+        lbls[target['flatmap'].labels] = labels
+        nii = nib.Nifti2Image(lbls, np.eye(4))
         nii.header.set_xyzt_units('mm', 'sec')
         ny.save(filename, nii)
-    save_hooks["labels.annot"] = _savenii2
-        
+    save_hooks["labels.nii.gz"] = _savenii2
+    # Now we can make a plot on the axes for the review.
+    ny.cortex_plot(
+        target['flatmap'],
+        color=labels, cmap='rainbow',
+        mask=(labels > 0),
+        axes=axes)
+
 
 # annotate_prfs ################################################################
 
