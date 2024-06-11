@@ -25,7 +25,7 @@ from .prfs  import annotate_prfs
 
 # Meta-Data ####################################################################
 
-__version__ = '0.1.3'
-#__all__ = ("AnnotationTool",)
+__version__ = '0.1.4'
+#__all__ = ("AnnotationTool", "annotate_prfs")
 
 

@@ -5,7 +5,7 @@ from setuptools import (setup, Extension)
 
 setup(
     name='cortexannotate',
-    version='0.1.3',
+    version='0.1.4',
     description='Toolbox for flexible annotation of the cortical surface by many raters',
     keywords='neuroscience cortex annotation',
     author='Noah C. Benson',
