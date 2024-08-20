@@ -10,12 +10,12 @@ display:
   figsize: [4, 4]
   dpi: 128
   plot_options:
-    color: [0.25, 0.25, 0.75]
+    color: "#dbfbff"
     linewidth: 1
     markersize: 1
     linestyle: "solid"
   fg_options:
-    color: [0.55, 0.55, 0.9]
+    color: [1, 1, 1]
     markersize: 2
 
 init: |
@@ -39,7 +39,7 @@ init: |
       "prf_cod": "prfR2.mgz",
       "wang15": "Kastner2015.mgz",
       "sulc": "corticalsulc.mgz"}
-  nsd_votc_file = {
+  nsd_votc_files = {
       "faces": "flocfacestval.mgz",
       "places": "flocplacestval.mgz",
       "characters": "floccharacterstval.mgz",
@@ -47,7 +47,7 @@ init: |
       "objects": "flocobjectstval.mgz",
       "floc_cod": "flocR2.mgz",
       "wang15": "Kastner2015.mgz",
-      "sulc": "corticalsulc.mgz"}
+      "csulc": "corticalsulc.mgz"}
   # This occipital pole mask is used with neuropythy's flatmap code; the tuple
   # indicates that the FreeSurfer parcellation property uses the value 43 to
   # indicate the occipital pole of the brain.
@@ -64,7 +64,7 @@ init: |
       else:
         vmask = np.zeros(fmap.vertex_count, dtype=bool)
         vmask[fmap.mask(mask2, indices=True)] = True
-      ii = np.intersect1d(umask & vmask)
+      ii = (umask[u] & vmask[v]) | (umask[v] & vmask[u])
       xy = fmap.coordinates
       dat = (xy[:,u[ii]] + xy[:,v[ii]]) / 2
       return [dat.T]
@@ -159,15 +159,15 @@ builtin_annotations:
   IOG:
     type: points
     plot_options:
-      color: [1, 1, 0]
+      color: [0.7, 0.7, 0.7]
       markersize: 1
-      visible: false
+      visible: true
     data: |
       return prop_to_boundary(target, ('csulc', 2))
   FG:
     type: points
     plot_options:
-      color: [1, 1, 0]
+      color: [0.7, 0.7, 0.7]
       markersize: 1
       visible: false
     data: |
@@ -175,7 +175,7 @@ builtin_annotations:
   CS:
     type: points
     plot_options:
-      color: [1, 1, 0]
+      color: [0.7, 0.7, 0.7]
       markersize: 1
       visible: false
     data: |
@@ -183,7 +183,7 @@ builtin_annotations:
   IFG:
     type: points
     plot_options:
-      color: [1, 1, 0]
+      color: [0.7, 0.7, 0.7]
       markersize: 1
       visible: false
     data: |
@@ -191,7 +191,7 @@ builtin_annotations:
   Calc:
     type: points
     plot_options:
-      color: [1, 1, 0]
+      color: [0.7, 0.7, 0.7]
       markersize: 1
       visible: false
     data: |
@@ -199,47 +199,47 @@ builtin_annotations:
   OTS:
     type: points
     plot_options:
-      color: [1, 1, 0]
+      color: [0.7, 0.7, 0.7]
       markersize: 1
-      visible: false
+      visible: true
     data: |
       return prop_to_boundary(target, ('csulc', 7))
   mFus:
     type: points
     plot_options:
-      color: [1, 1, 0]
+      color: [0.7, 0.7, 0.7]
       markersize: 1
-      visible: false
+      visible: true
     data: |
       return prop_to_boundary(target, ('csulc', 8))
   LOS:
     type: points
     plot_options:
-      color: [1, 1, 0]
+      color: [0.7, 0.7, 0.7]
       markersize: 1
-      visible: false
+      visible: true
     data: |
       return prop_to_boundary(target, ('csulc', 23))
   TOS:
     type: points
     plot_options:
-      color: [1, 1, 0]
+      color: [0.7, 0.7, 0.7]
       markersize: 1
-      visible: false
+      visible: true
     data: |
       return prop_to_boundary(target, ('csulc', 24))
   CoS:
     type: points
     plot_options:
-      color: [1, 1, 0]
+      color: [0.7, 0.7, 0.7]
       markersize: 1
-      visible: false
+      visible: true
     data: |
       return prop_to_boundary(target, ('csulc', 25))
   ITS:
     type: points
     plot_options:
-      color: [1, 1, 0]
+      color: [0.7, 0.7, 0.7]
       markersize: 1
       visible: false
     data: |
@@ -247,7 +247,7 @@ builtin_annotations:
   ptCoS:
     type: points
     plot_options:
-      color: [1, 1, 0]
+      color: [0.7, 0.7, 0.7]
       markersize: 1
       visible: false
     data: |
@@ -255,7 +255,7 @@ builtin_annotations:
   POS:
     type: points
     plot_options:
-      color: [1, 1, 0]
+      color: [0.7, 0.7, 0.7]
       markersize: 1
       visible: false
     data: |
@@ -263,27 +263,38 @@ builtin_annotations:
       
 annotations:
   IOS-characters:
-    - ["characters", "curvature"]
+    - ["characters"]
+    - ["curvature"]
   LOS-bodies:
-    - ["bodies", "curvature"]
+    - ["bodies"]
+    - ["curvature"]
   IOG-faces:
-    - ["faces", "curvature"]
+    - ["faces"]
+    - ["curvature"]
   TOS-places:
-    - ["places", "curvature"]
+    - ["places"]
+    - ["curvature"]
   pOTS-characters:
-    - ["characters", "curvature"]
+    - ["characters"]
+    - ["curvature"]
   ITG-bodies:
-    - ["bodies", "curvature"]
+    - ["bodies"]
+    - ["curvature"]
   pFus-faces:
-    - ["faces", "curvature"]
+    - ["faces"]
+    - ["curvature"]
   mOTS-characters:
-    - ["characters", "curvature"]
+    - ["characters"]
+    - ["curvature"]
   OTS-bodies:
-    - ["bodies", "curvature"]
+    - ["bodies"]
+    - ["curvature"]
   mFus-faces:
-    - ["faces", "curvature"]
+    - ["faces"]
+    - ["curvature"]
   CoS-places:
-    - ["places", "curvature"]
+    - ["places"]
+    - ["curvature"]
 
 figures:
   term: |
@@ -294,8 +305,8 @@ figures:
     axes.set_ylim((ymin,ymax))
   _: |
     ny.cortex_plot(
-        target['flatmap'], color=key, axes=ax,
-        cmap='temperature_dark', vmin=-8, vmax=8, mask=('floc_cod', 0.25, 1))
+        target['flatmap'], color=key, axes=axes,
+        cmap='temperature_dark', vmin=-8, vmax=8)
   polar_angle: |
     ny.cortex_plot(target['flatmap'], color="polar_angle", axes=axes)
   eccentricity: |

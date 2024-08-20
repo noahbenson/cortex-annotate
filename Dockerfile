@@ -92,20 +92,10 @@ RUN pip install --upgrade setuptools
 RUN pip install ipycanvas pyyaml neuropythy nibabel s3fs
 RUN pip install diplib
 
-# Install collapsible cell extensions...
-#RUN mamba install -cconda-forge jupyter_contrib_nbextensions \
-# && jupyter contrib nbextension install --user \
-# && jupyter nbextension enable collapsible_headings/main \
-# && jupyter nbextension enable select_keymap/main
 RUN mkdir -p /home/$NB_USER/.jupyter/custom
 # Copy the config directory's requirements over and install them.
 COPY config/requirements.txt /build/
 RUN pip install -r /build/requirements.txt
-# For some reason, tornado is causing major problems, so we downgrade to 6.1 here:
-#RUN pip install \
-#          'tornado == 6.1' \
-#          'jupyter-client == 7.3.2' \
-#          'jupyter-server < 2.0.0'
 
 
 # Copy User Files ##############################################################

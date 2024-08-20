@@ -1,7 +1,8 @@
 version: '3'
 services:
    annotate:
-      build: .
+      #build: .
+      image: nben/cortex-annotate:0.1
       ports:
          - "8888:${ANNOTATE_PORT-8888}"
       volumes:
