@@ -36,12 +36,38 @@ init: |
   nsd_prf_files = {
       "polar_angle": "prfangle.mgz",
       "eccentricity": "prfeccentricity.mgz",
-      "cod": "prfR2.mgz",
-      "wang15": "Kastner2015.mgz"}
+      "prf_cod": "prfR2.mgz",
+      "wang15": "Kastner2015.mgz",
+      "sulc": "corticalsulc.mgz"}
+  nsd_votc_file = {
+      "faces": "flocfacestval.mgz",
+      "places": "flocplacestval.mgz",
+      "characters": "floccharacterstval.mgz",
+      "bodies": "flocbodiestval.mgz",
+      "objects": "flocobjectstval.mgz",
+      "floc_cod": "flocR2.mgz",
+      "wang15": "Kastner2015.mgz",
+      "sulc": "corticalsulc.mgz"}
   # This occipital pole mask is used with neuropythy's flatmap code; the tuple
   # indicates that the FreeSurfer parcellation property uses the value 43 to
   # indicate the occipital pole of the brain.
   occpole_mask = ('parcellation', 43)
+  # This function converts a property into a boundary based on what is on either
+  # side of the boundary.
+  def prop_to_boundary(target, mask1, mask2=None):
+      fmap = target['flatmap']
+      (u,v) = fmap.tess.indexed_edges
+      umask = np.zeros(fmap.vertex_count, dtype=bool)
+      umask[fmap.mask(mask1, indices=True)] = True
+      if mask2 is None:
+        vmask = ~umask
+      else:
+        vmask = np.zeros(fmap.vertex_count, dtype=bool)
+        vmask[fmap.mask(mask2, indices=True)] = True
+      ii = np.intersect1d(umask & vmask)
+      xy = fmap.coordinates
+      dat = (xy[:,u[ii]] + xy[:,v[ii]]) / 2
+      return [dat.T]
 
 # We assume in this example that the libraries neuropythy and numpy have been
 # imported (as ny and np respectively) in the init section (see below).
@@ -76,33 +102,6 @@ targets:
   Hemisphere:
     - LH
     - RH
-  # We will want to include the Wang et al. (2015) probabilistic visual area
-  # atlas as an optional annotation that users can turn on and off (see the
-  # `builtin_annotations` section, below). This element of the target section
-  # loads the Wang atlas and applies it to the subject we are workign with.
-  wang15: |
-    import neuropythy.commands as nycmd, os
-    # Grab the subject object that was loaded in the 'subject' section.
-    sub = target['subject']
-    # We also need to know the hemisphere name.
-    h = target['Hemisphere'].lower()
-    # Get the subject's cache-path; this is tracked by neuropythy.
-    subpath = sub.pseudo_path.cache_path
-    # Possibly, this atlas has already been applied to this subject; if so, we
-    # don't need to (re-)run neuropythy's atlas command (which applies the atlas
-    # to the subject and saves it as a file).
-    wangpath = os.path.join(subpath, 'surf', f'{h}.wang15_mplbl.mgz')
-    if not os.path.isfile(wangpath):
-        # Make sure the fsaverage-alignment has already been loaded into cache;
-        # because the atlas command operates on the filesystem while the subject
-        # and cache path load things lazily, we need to make sure these have
-        # already been downloaded before we run the command.
-        sub.hemis['lh'].surface('fsaverage')
-        sub.hemis['rh'].surface('fsaverage')
-        # Now run the atlas command.
-        nycmd.atlas.main(["-awang15", "-fmgz", subpath])
-    # Load and return the file.
-    return ny.load(wangpath)
   # The 'cortex' key in the target data is for the cortical surface object,
   # which is managed and loaded by neuropythy from the subject's FreeSurfer
   # object. Note that the 'cortex' entry is like the 'subject' entry in that it
@@ -120,14 +119,13 @@ targets:
     label_path = nsd_path.subpath('freesurfer', sid, 'label')
     props = {
         k: ny.load(label_path.subpath(f'{h}.{filename}'))
-        for (k,filename) in nsd_prf_files.items()}
+        for (k,filename) in nsd_votc_files.items()}
     # Convert the polar angle into Neuropythy's "visual" format (i.e., 0 degrees
     # is the upper vertical meridian, 90 degrees is the right horizontal
     # meridian, and -90 degrees is the left horizontal meridian.
-    ang = props['polar_angle']
-    props['polar_angle'] = np.mod(90 - ang + 180, 360) - 180
-    # Add the Wang et al. (2015) atlas, loaded in the above 'wang15' section.
-    props['wang15'] = target['wang15']
+    if "polar_angle" in props:
+        ang = props['polar_angle']
+        props['polar_angle'] = np.mod(90 - ang + 180, 360) - 180
     # Grab the appropriate coretx/hemisphere object.
     cortex = sub.hemis[h]
     # Finally, return that hemisphere object with the properties associated with
@@ -142,116 +140,6 @@ targets:
   flatmap: |
     cortex = target['cortex']
     return cortex.mask_flatmap(occpole_mask, map_right='right', radius=np.pi/2)
-
-annotations:
-  # V1 contours:
-  V1 Foveal Point:
-    type: point
-    grid:
-      - ["polar_angle", "eccentricity"]
-      - ["curvature", "cod"]
-  V1 UVM (ventral):
-    fixed_head: V1 Foveal Point
-    grid:
-      - ["polar_angle", "eccentricity"]
-      - ["curvature", "cod"]
-  V1 LVM (dorsal):
-    fixed_head: V1 Foveal Point
-    grid:
-      - ["polar_angle", "eccentricity"]
-      - ["curvature", "cod"]
-  V1 Periphery:
-    fixed_head:
-      requires: V1 UVM (ventral)
-      calculate: |
-        return annotations['V1 UVM (ventral)'][-1,:]
-    fixed_tail:
-      requires: V1 LVM (dorsal)
-      calculate: |
-        return annotations['V1 LVM (dorsal)'][-1,:]
-    grid:
-      - ["polar_angle", "eccentricity"]
-      - ["curvature", "cod"]
-  # V2 contours:
-  V2 Foveal Point:
-    type: point
-    grid:
-      - ["polar_angle", "eccentricity"]
-      - ["curvature", "cod"]
-  V2 UVM (ventral):
-    fixed_head: V2 Foveal Point
-    grid:
-      - ["polar_angle", "eccentricity"]
-      - ["curvature", "cod"]
-  V2 LVM (dorsal):
-    fixed_head: V2 Foveal Point
-    grid:
-      - ["polar_angle", "eccentricity"]
-      - ["curvature", "cod"]
-  V2 Ventral Periphery:
-    fixed_head:
-      requires: V2 UVM (ventral)
-      calculate: |
-        return annotations['V2 UVM (ventral)'][-1,:]
-    fixed_tail:
-      requires: V1 UVM (ventral)
-      calculate: |
-        return annotations['V1 UVM (ventral)'][-1,:]
-    grid:
-      - ["polar_angle", "eccentricity"]
-      - ["curvature", "cod"]
-  V2 Dorsal Periphery:
-    fixed_head:
-      requires: V2 LVM (dorsal)
-      calculate: |
-        return annotations['V2 LVM (dorsal)'][-1,:]
-    fixed_tail:
-      requires: V1 LVM (dorsal)
-      calculate: |
-        return annotations['V1 LVM (dorsal)'][-1,:]
-    grid:
-      - ["polar_angle", "eccentricity"]
-      - ["curvature", "cod"]
-  # V3 contours:
-  V3 Foveal Point:
-    type: point
-    grid:
-      - ["polar_angle", "eccentricity"]
-      - ["curvature", "cod"]
-  V3 UVM (ventral):
-    fixed_head: V3 Foveal Point
-    grid:
-      - ["polar_angle", "eccentricity"]
-      - ["curvature", "cod"]
-  V3 LVM (dorsal):
-    fixed_head: V3 Foveal Point
-    grid:
-      - ["polar_angle", "eccentricity"]
-      - ["curvature", "cod"]
-  V3 Ventral Periphery:
-    fixed_head:
-      requires: V3 UVM (ventral)
-      calculate: |
-        return annotations['V3 UVM (ventral)'][-1,:]
-    fixed_tail:
-      requires: V2 UVM (ventral)
-      calculate: |
-        return annotations['V2 UVM (ventral)'][-1,:]
-    grid:
-      - ["polar_angle", "eccentricity"]
-      - ["curvature", "cod"]
-  V3 Dorsal Periphery:
-    fixed_head:
-      requires: V3 LVM (dorsal)
-      calculate: |
-        return annotations['V3 LVM (dorsal)'][-1,:]
-    fixed_tail:
-      requires: V2 LVM (dorsal)
-      calculate: |
-        return annotations['V2 LVM (dorsal)'][-1,:]
-    grid:
-      - ["polar_angle", "eccentricity"]
-      - ["curvature", "cod"]
 
 builtin_annotations:
   Wang2015 Atlas:
@@ -268,6 +156,134 @@ builtin_annotations:
       ii = w[u] != w[v]
       dat = np.mean([xy[:,u[ii]], xy[:,v[ii]]], axis=0)
       return [dat.T]
+  IOG:
+    type: points
+    plot_options:
+      color: [1, 1, 0]
+      markersize: 1
+      visible: false
+    data: |
+      return prop_to_boundary(target, ('csulc', 2))
+  FG:
+    type: points
+    plot_options:
+      color: [1, 1, 0]
+      markersize: 1
+      visible: false
+    data: |
+      return prop_to_boundary(target, ('csulc', 3))
+  CS:
+    type: points
+    plot_options:
+      color: [1, 1, 0]
+      markersize: 1
+      visible: false
+    data: |
+      return prop_to_boundary(target, ('csulc', 4))
+  IFG:
+    type: points
+    plot_options:
+      color: [1, 1, 0]
+      markersize: 1
+      visible: false
+    data: |
+      return prop_to_boundary(target, ('csulc', 5))
+  Calc:
+    type: points
+    plot_options:
+      color: [1, 1, 0]
+      markersize: 1
+      visible: false
+    data: |
+      return prop_to_boundary(target, ('csulc', 6))
+  OTS:
+    type: points
+    plot_options:
+      color: [1, 1, 0]
+      markersize: 1
+      visible: false
+    data: |
+      return prop_to_boundary(target, ('csulc', 7))
+  mFus:
+    type: points
+    plot_options:
+      color: [1, 1, 0]
+      markersize: 1
+      visible: false
+    data: |
+      return prop_to_boundary(target, ('csulc', 8))
+  LOS:
+    type: points
+    plot_options:
+      color: [1, 1, 0]
+      markersize: 1
+      visible: false
+    data: |
+      return prop_to_boundary(target, ('csulc', 23))
+  TOS:
+    type: points
+    plot_options:
+      color: [1, 1, 0]
+      markersize: 1
+      visible: false
+    data: |
+      return prop_to_boundary(target, ('csulc', 24))
+  CoS:
+    type: points
+    plot_options:
+      color: [1, 1, 0]
+      markersize: 1
+      visible: false
+    data: |
+      return prop_to_boundary(target, ('csulc', 25))
+  ITS:
+    type: points
+    plot_options:
+      color: [1, 1, 0]
+      markersize: 1
+      visible: false
+    data: |
+      return prop_to_boundary(target, ('csulc', 26))
+  ptCoS:
+    type: points
+    plot_options:
+      color: [1, 1, 0]
+      markersize: 1
+      visible: false
+    data: |
+      return prop_to_boundary(target, ('csulc', 27))
+  POS:
+    type: points
+    plot_options:
+      color: [1, 1, 0]
+      markersize: 1
+      visible: false
+    data: |
+      return prop_to_boundary(target, ('csulc', 28))
+      
+annotations:
+  IOS-characters:
+    - ["characters", "curvature"]
+  LOS-bodies:
+    - ["bodies", "curvature"]
+  IOG-faces:
+    - ["faces", "curvature"]
+  TOS-places:
+    - ["places", "curvature"]
+  pOTS-characters:
+    - ["characters", "curvature"]
+  ITG-bodies:
+    - ["bodies", "curvature"]
+  pFus-faces:
+    - ["faces", "curvature"]
+  mOTS-characters:
+    - ["characters", "curvature"]
+  OTS-bodies:
+    - ["bodies", "curvature"]
+  mFus-faces:
+    - ["faces", "curvature"]
+  CoS-places:
+    - ["places", "curvature"]
 
 figures:
   term: |
@@ -276,12 +292,16 @@ figures:
     (xmax,ymax) = np.max(xy, axis=1)
     axes.set_xlim((xmin,xmax))
     axes.set_ylim((ymin,ymax))
+  _: |
+    ny.cortex_plot(
+        target['flatmap'], color=key, axes=ax,
+        cmap='temperature_dark', vmin=-8, vmax=8, mask=('floc_cod', 0.25, 1))
   polar_angle: |
     ny.cortex_plot(target['flatmap'], color="polar_angle", axes=axes)
   eccentricity: |
     ny.cortex_plot(target['flatmap'], color="eccentricity", axes=axes)
-  cod: |
-    ny.cortex_plot(target['flatmap'], color="cod", axes=axes,
+  prf_cod: |
+    ny.cortex_plot(target['flatmap'], color="prf_cod", axes=axes,
                    cmap='hot', vmin=0, vmax=100)
   curvature: |
     ny.cortex_plot(target['flatmap'], axes=axes)

@@ -3,13 +3,12 @@ services:
    annotate:
       build: .
       ports:
-         - "8888:${ANNOTATE_PORT}"
+         - "8888:${ANNOTATE_PORT-8888}"
       volumes:
          - ${PWD}/src:/src
          - ${PWD}/save:/save
          - ${PWD}/cache:/cache
          - ${PWD}/config:/config
          - ${PWD}:/git
-         - /data/NYUNEI:/data
       environment:
         - DOCKER_STACKS_JUPYTER_CMD=notebook
