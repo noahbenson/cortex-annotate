@@ -78,12 +78,20 @@ RUN curl -L -o /data/required_subjects/fsaverage_sym.tar.gz \
 USER $NB_USER
 # Install some stuff we are likely to need, including neuropythy.
 
-#RUN conda update -y -n base conda
-RUN conda install -y -cconda-forge nibabel s3fs
-RUN conda install -y -cconda-forge \
-          ipywidgets pip jupyter_contrib_nbextensions traitlets webcolors jsonschema-with-format-nongpl
-RUN pip install --upgrade setuptools \
- && pip install ipycanvas pyyaml neuropythy
+RUN mamba update -y -n base mamba
+RUN mamba update --all -y
+#RUN mamba install -y -cconda-forge nibabel s3fs
+RUN mamba install -y -cconda-forge \
+        ipywidgets \
+        pip \
+        traitlets \
+        webcolors \
+        jsonschema-with-format-nongpl \
+        'tornado == 6.1'
+RUN pip install --upgrade setuptools
+RUN pip install ipycanvas pyyaml neuropythy nibabel s3fs
+RUN pip install diplib
+
 # Install collapsible cell extensions...
 #RUN mamba install -cconda-forge jupyter_contrib_nbextensions \
 # && jupyter contrib nbextension install --user \
@@ -98,8 +106,6 @@ RUN pip install -r /build/requirements.txt
 #          'tornado == 6.1' \
 #          'jupyter-client == 7.3.2' \
 #          'jupyter-server < 2.0.0'
-RUN conda install -cconda-forge 'tornado == 6.1'
-RUN pip install --upgrade aiobotocore 'tornado == 6.1' jupyter-client jupyter-server s3fs ipykernel
 
 
 # Copy User Files ##############################################################
