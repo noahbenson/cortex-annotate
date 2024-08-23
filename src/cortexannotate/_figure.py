@@ -115,6 +115,7 @@ class FigurePanel(ipw.HBox):
         self.reviewing_context = FigurePanel.LoadingContext(
             self.reviewing_canvas,
             review_msg)
+        self.review_msg = None
         # Set up our event observers for clicks/tabs/backspaces.
         self.multicanvas.on_key_down(self.on_key_press)
         self.multicanvas.on_mouse_down(self.on_mouse_click)
