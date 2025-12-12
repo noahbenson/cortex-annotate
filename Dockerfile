@@ -77,15 +77,6 @@ RUN curl -L -o /data/required_subjects/fsaverage_sym.tar.gz \
 # won't usually have to rebuild these dependencies.
 USER $NB_USER
 # Install some stuff we are likely to need, including neuropythy.
-
-<<<<<<< HEAD
-#RUN conda update -y -n base conda
-RUN conda install -y -cconda-forge nibabel s3fs
-RUN conda install -y -cconda-forge \
-          ipywidgets pip jupyter_contrib_nbextensions traitlets webcolors jsonschema-with-format-nongpl
-RUN pip install --upgrade setuptools \
- && pip install ipycanvas pyyaml neuropythy
-=======
 RUN mamba update -y -n base mamba
 RUN mamba update --all -y
 #RUN mamba install -y -cconda-forge nibabel s3fs
@@ -94,7 +85,7 @@ RUN mamba install -y -cconda-forge \
 RUN pip install --upgrade setuptools
 RUN pip install ipycanvas pyyaml neuropythy nibabel s3fs
 RUN pip install diplib
->>>>>>> ae3bc67f72372fe45cd72eff4575a0eaa1a0cf9c
+
 # Install collapsible cell extensions...
 #RUN mamba install -cconda-forge jupyter_contrib_nbextensions \
 # && jupyter contrib nbextension install --user \
